@@ -30,7 +30,7 @@
 
         .media-wrapper {
             width: 100vw;
-            height: calc(100dvh - 2rem);
+            height: calc(100dvh - 4rem);
             background-color: var(--bg-color);
             background-image: linear-gradient(var(--line-color-1) 1.5px, transparent 1.5px), linear-gradient(90deg, var(--line-color-1) 1.5px, transparent 1.5px), linear-gradient(var(--line-color-2) 1px, transparent 1px), linear-gradient(90deg, var(--line-color-2) 1px, transparent 1px);
             background-position: -1.5px -1.5px, -1.5px -1.5px, -1px -1px, -1px -1px;
@@ -39,17 +39,43 @@
             overflow: hidden;
         }
 
-        canvas {
-            /* Initial canvas styling */
+        #the-canvas {
             background-color: #fff;
-            cursor: grab;
         }
 
         .toolbar {
-            /* Style your toolbar */
             width: 100vw;
             height: 2rem;
             padding: .25rem;
+            background: #eaeaea;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: .125rem solid #ccc;
+        }
+
+        .toolbar>div {
+            display: flex;
+            align-items: center;
+            gap: .25rem;
+        }
+
+
+        .samples {
+            width: 100vw;
+            height: 2rem;
+            padding: .25rem;
+            background: white;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            border-bottom: .125rem solid #ccc;
+        }
+
+        .samples {
+            color: blue;
+            cursor: pointer;
+            text-decoration: underline;
         }
 
         .cursor-pan {
@@ -68,25 +94,31 @@
 
 <body>
     <div class="toolbar">
-        <!-- Add buttons or controls for zoom, pan, etc. -->
-        <button id="mode-pan">Pan</button>
-        <button id="mode-click-zoom">Click to Zoom</button>
-        <button id="mode-drag-zoom">Drag to Zoom</button>
-        <button id="zoom-in">Zoom In</button>
-        <button id="zoom-out">Zoom Out</button>
-        <select id="zoom-level">
-            <option value="2">200%</option>
-            <option value="1" selected>100%</option>
-            <option value="0.75">75%</option>
-            <option value="0.5">50%</option>
-            <!-- Add more options as needed -->
-        </select>
-        <input type="file" id="pdf-upload" accept="application/pdf,image/*">
-        <select id="page-selector"></select>
-        <!-- More controls as needed -->
+        <div>
+            <button id="mode-pan">Pan</button>
+            <button id="mode-click-zoom">Click to Zoom</button>
+            <button id="zoom-in">Zoom In</button>
+            <button id="zoom-out">Zoom Out</button>
+            <select id="zoom-level">
+                <option value="2">200%</option>
+                <option value="1" selected>100%</option>
+                <option value="0.75">75%</option>
+                <option value="0.5">50%</option>
+            </select>
+        </div>
+        <div>
+            <input type="file" id="pdf-upload" accept="application/pdf,image/*">
+            <select id="page-selector"></select>
+        </div>
+    </div>
+    <div class="samples">
+        <a id="single-pdf-sample">Single page PDF</a>
+        <a id="multi-pdf-sample">Multi-page PDF</a>
+        <a id="base-64-sample">Base64 PDF</a>
+        <a id="image-sample">Random image</a>
     </div>
     <div class="media-wrapper">
-        <canvas id="the-canvas" class="draggable"></canvas>
+        <canvas id="the-canvas" class="draggable cursor-pan"></canvas>
     </div>
 
 
@@ -112,7 +144,7 @@
         pageSelector.addEventListener('change', (e) => {
             displayPage(parseInt(e.target.value));
         });
-        
+
         // target elements with the "draggable" class
         const interactObj = interact('.draggable')
             .draggable({
@@ -143,6 +175,7 @@
                 // call this function on every dragend event
                 onend: function (event) {
                     console.log('onend');
+                    interactObj.reflow({ name: 'drag', axis: 'xy' })
                 }
             });
 
@@ -198,6 +231,23 @@
             fileReader.readAsArrayBuffer(file);
         }
 
+        function renderBase64(pdfData) {
+            resetCanvasTransform();
+            pdfjsLib.getDocument({ data: pdfData }).promise.then(doc => {
+                pdfDoc = doc;
+                pageSelector.innerHTML = '';
+
+                for (let i = 1; i <= pdfDoc.numPages; i++) {
+                    let option = document.createElement('option');
+                    option.textContent = 'Page ' + i;
+                    option.value = i;
+                    pageSelector.appendChild(option);
+                }
+
+                displayPage(1);
+            });
+        }
+
         function renderImage(file) {
             resetCanvasTransform();
             const fileReader = new FileReader();
@@ -211,6 +261,43 @@
                 img.src = this.result;
             };
             fileReader.readAsDataURL(file);
+        }
+
+        function loadPDFFromURL(url) {
+            resetCanvasTransform();
+            pdfjsLib.getDocument(url).promise.then(doc => {
+                pdfDoc = doc;
+                pageSelector.innerHTML = '';
+
+                for (let i = 1; i <= pdfDoc.numPages; i++) {
+                    let option = document.createElement('option');
+                    option.textContent = 'Page ' + i;
+                    option.value = i;
+                    pageSelector.appendChild(option);
+                }
+
+                displayPage(1);
+            }).catch(error => {
+                console.error("Error loading PDF:", error);
+                // Handle error (e.g., show a message to the user)
+            });
+        }
+
+        function loadImageFromURL(url) {
+            if (!url) url = "https://source.unsplash.com/random";
+            resetCanvasTransform();
+            const img = new Image();
+            img.onload = function () {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
+                ctx.drawImage(img, 0, 0, img.width, img.height);
+            };
+            img.onerror = function () {
+                console.error("Error loading image.");
+                // Handle error (e.g., show a message to the user)
+            };
+            img.src = url;
         }
 
         let scaleFactor = 1;
@@ -235,6 +322,7 @@
         function updateCanvasTransform() {
             const canvas = document.getElementById('the-canvas');
             canvas.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleFactor})`;
+            interactObj.reflow({ name: 'drag', axis: 'xy' })
         }
 
         // Event listeners for buttons and dropdown
@@ -244,22 +332,48 @@
             setZoomLevel(parseFloat(this.value));
         });
 
+        document.getElementById('single-pdf-sample').addEventListener('click', () => {
+            loadPDFFromURL('./sample.pdf');
+        });
+
+        document.getElementById('multi-pdf-sample').addEventListener('click', () => {
+            loadPDFFromURL('./multipage.pdf');
+        });
+
+        document.getElementById('base-64-sample').addEventListener('click', () => {
+            let data = atob(
+                'JVBERi0xLjcKCjEgMCBvYmogICUgZW50cnkgcG9pbnQKPDwKICAvVHlwZSAvQ2F0YWxvZwog' +
+                'IC9QYWdlcyAyIDAgUgo+PgplbmRvYmoKCjIgMCBvYmoKPDwKICAvVHlwZSAvUGFnZXMKICAv' +
+                'TWVkaWFCb3ggWyAwIDAgMjAwIDIwMCBdCiAgL0NvdW50IDEKICAvS2lkcyBbIDMgMCBSIF0K' +
+                'Pj4KZW5kb2JqCgozIDAgb2JqCjw8CiAgL1R5cGUgL1BhZ2UKICAvUGFyZW50IDIgMCBSCiAg' +
+                'L1Jlc291cmNlcyA8PAogICAgL0ZvbnQgPDwKICAgICAgL0YxIDQgMCBSIAogICAgPj4KICA+' +
+                'PgogIC9Db250ZW50cyA1IDAgUgo+PgplbmRvYmoKCjQgMCBvYmoKPDwKICAvVHlwZSAvRm9u' +
+                'dAogIC9TdWJ0eXBlIC9UeXBlMQogIC9CYXNlRm9udCAvVGltZXMtUm9tYW4KPj4KZW5kb2Jq' +
+                'Cgo1IDAgb2JqICAlIHBhZ2UgY29udGVudAo8PAogIC9MZW5ndGggNDQKPj4Kc3RyZWFtCkJU' +
+                'CjcwIDUwIFRECi9GMSAxMiBUZgooSGVsbG8sIHdvcmxkISkgVGoKRVQKZW5kc3RyZWFtCmVu' +
+                'ZG9iagoKeHJlZgowIDYKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDEwIDAwMDAwIG4g' +
+                'CjAwMDAwMDAwNzkgMDAwMDAgbiAKMDAwMDAwMDE3MyAwMDAwMCBuIAowMDAwMDAwMzAxIDAw' +
+                'MDAwIG4gCjAwMDAwMDAzODAgMDAwMDAgbiAKdHJhaWxlcgo8PAogIC9TaXplIDYKICAvUm9v' +
+                'dCAxIDAgUgo+PgpzdGFydHhyZWYKNDkyCiUlRU9G');
+            renderBase64(data);
+        });
+
+        document.getElementById('image-sample').addEventListener('click', () => {
+            loadImageFromURL();
+        });
+
         let interactionMode = 'pan'; // Default mode
 
         document.getElementById('mode-pan').addEventListener('click', () => {
             interactionMode = 'pan';
             canvas.className = 'draggable cursor-pan';
-            resetInteractable();
+            interactObj.enabled = true;
         });
 
         document.getElementById('mode-click-zoom').addEventListener('click', () => {
             interactionMode = 'click-zoom';
             canvas.className = 'draggable cursor-zoom-in';
-        });
-
-        document.getElementById('mode-drag-zoom').addEventListener('click', () => {
-            interactionMode = 'drag-zoom';
-            canvas.className = 'draggable cursor-drag-to-zoom';
+            interactObj.enabled = false;
         });
 
         canvas.addEventListener('click', (event) => {
@@ -289,10 +403,6 @@
             scaleFactor *= 1.2;
 
             updateCanvasTransform();
-        }
-
-        function resetInteractable() {
-            console.log(interactObj);
         }
 
 
