@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Media Viewer POC</title>
+    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+
+
+    <style>
+        :root {
+            --bg-color: #fff;
+            --line-color-1: #366;
+            --line-color-2: #a9a9a9;
+        }
+
+        *,
+        *::before,
+        *::after {
+            -webkit-box-sizing: border-box;
+            -moz-box-sizing: border-box;
+            box-sizing: border-box;
+        }
+
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+        }
+
+        .media-wrapper {
+            width: 100vw;
+            height: calc(100dvh - 2rem);
+            background-color: var(--bg-color);
+            background-image: linear-gradient(var(--line-color-1) 1.5px, transparent 1.5px), linear-gradient(90deg, var(--line-color-1) 1.5px, transparent 1.5px), linear-gradient(var(--line-color-2) 1px, transparent 1px), linear-gradient(90deg, var(--line-color-2) 1px, transparent 1px);
+            background-position: -1.5px -1.5px, -1.5px -1.5px, -1px -1px, -1px -1px;
+            background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        canvas {
+            /* Initial canvas styling */
+            background-color: #fff;
+            cursor: grab;
+        }
+
+        .toolbar {
+            /* Style your toolbar */
+            width: 100vw;
+            height: 2rem;
+            padding: .25rem;
+        }
+
+        .cursor-pan {
+            cursor: grab;
+        }
+
+        .cursor-zoom-in {
+            cursor: zoom-in;
+        }
+
+        .cursor-drag-to-zoom {
+            cursor: crosshair;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="toolbar">
+        <!-- Add buttons or controls for zoom, pan, etc. -->
+        <button id="mode-pan">Pan</button>
+        <button id="mode-click-zoom">Click to Zoom</button>
+        <button id="mode-drag-zoom">Drag to Zoom</button>
+        <button id="zoom-in">Zoom In</button>
+        <button id="zoom-out">Zoom Out</button>
+        <select id="zoom-level">
+            <option value="2">200%</option>
+            <option value="1" selected>100%</option>
+            <option value="0.75">75%</option>
+            <option value="0.5">50%</option>
+            <!-- Add more options as needed -->
+        </select>
+        <input type="file" id="pdf-upload" accept="application/pdf,image/*">
+        <select id="page-selector"></select>
+        <!-- More controls as needed -->
+    </div>
+    <div class="media-wrapper">
+        <canvas id="the-canvas" class="draggable"></canvas>
+    </div>
+
+
+    <script type="module">
+        import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.269/pdf.min.mjs';
+        let pdfDoc = null;
+        let canvas = document.getElementById('the-canvas');
+        let ctx = canvas.getContext('2d');
+        let pageSelector = document.getElementById('page-selector');
+
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.269/pdf.worker.min.mjs';
+
+        function displayPage(pageNum) {
+            pdfDoc.getPage(pageNum).then(page => {
+                var viewport = page.getViewport({ scale: 1 });
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                page.render({ canvasContext: ctx, viewport: viewport });
+            });
+        }
+
+        pageSelector.addEventListener('change', (e) => {
+            displayPage(parseInt(e.target.value));
+        });
+        
+        // target elements with the "draggable" class
+        const interactObj = interact('.draggable')
+            .draggable({
+                // enable inertial throwing
+                inertia: true,
+                styleCursor: false,
+                // keep the element within the area of it's parent
+                modifiers: [
+                    interact.modifiers.restrictRect({
+                        restriction: 'parent',
+                        elementRect: { top: 0.75, left: 0.75, bottom: 0.25, right: 0.25 },
+                        endOnly: true
+                    })
+                ],
+                // disable autoScroll
+                autoScroll: false,
+                cursorChecker() {
+                    // don't set a cursor for drag actions
+                    return null
+                },
+                onstart: function (event) {
+                    console.log('onstart');
+
+                },
+
+                // call this function on every dragmove event
+                onmove: dragMoveListener,
+                // call this function on every dragend event
+                onend: function (event) {
+                    console.log('onend');
+                }
+            });
+
+        function resetCanvasTransform() {
+            scaleFactor = 1; // Reset scale factor to default
+            translateX = 0; // Reset translate values to default
+            translateY = 0;
+            canvas.style.transform = 'translate(0px, 0px) scale(1)'; // Reset both translate and scale
+        }
+
+        function dragMoveListener(event) {
+            if (interactionMode === 'pan') {
+                translateX += event.dx;
+                translateY += event.dy;
+                updateCanvasTransform();
+            }
+        }
+
+        document.getElementById('pdf-upload').addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (file.type === 'application/pdf') {
+                // Handle PDF files as before
+                renderPDF(file);
+            } else if (file.type.startsWith('image/')) {
+                // Handle image files
+                renderImage(file);
+            } else {
+                alert('Please select a PDF or an image file.');
+            }
+        });
+
+        function renderPDF(file) {
+            resetCanvasTransform();
+            const fileReader = new FileReader();
+            fileReader.onload = function () {
+                const typedArray = new Uint8Array(this.result);
+                pdfjsLib.getDocument({ data: typedArray }).promise.then(doc => {
+                    pdfDoc = doc;
+                    pageSelector.innerHTML = '';
+
+                    for (let i = 1; i <= pdfDoc.numPages; i++) {
+                        let option = document.createElement('option');
+                        option.textContent = 'Page ' + i;
+                        option.value = i;
+                        pageSelector.appendChild(option);
+                    }
+
+                    displayPage(1);
+                });
+            };
+            fileReader.readAsArrayBuffer(file);
+        }
+
+        function renderImage(file) {
+            resetCanvasTransform();
+            const fileReader = new FileReader();
+            fileReader.onload = function () {
+                const img = new Image();
+                img.onload = function () {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0, img.width, img.height);
+                };
+                img.src = this.result;
+            };
+            fileReader.readAsDataURL(file);
+        }
+
+        let scaleFactor = 1;
+
+        function zoomIn() {
+            scaleFactor *= 1.1; // Zoom in by 10%
+            updateCanvasTransform();
+        }
+
+        function zoomOut() {
+            scaleFactor *= 0.9; // Zoom out by 10%
+            updateCanvasTransform();
+        }
+
+        const zoomSensitivity = 0.5;
+
+        function setZoomLevel(level) {
+            scaleFactor = level;
+            updateCanvasTransform();
+        }
+
+        function updateCanvasTransform() {
+            const canvas = document.getElementById('the-canvas');
+            canvas.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleFactor})`;
+        }
+
+        // Event listeners for buttons and dropdown
+        document.getElementById('zoom-in').addEventListener('click', zoomIn);
+        document.getElementById('zoom-out').addEventListener('click', zoomOut);
+        document.getElementById('zoom-level').addEventListener('change', function () {
+            setZoomLevel(parseFloat(this.value));
+        });
+
+        let interactionMode = 'pan'; // Default mode
+
+        document.getElementById('mode-pan').addEventListener('click', () => {
+            interactionMode = 'pan';
+            canvas.className = 'draggable cursor-pan';
+            resetInteractable();
+        });
+
+        document.getElementById('mode-click-zoom').addEventListener('click', () => {
+            interactionMode = 'click-zoom';
+            canvas.className = 'draggable cursor-zoom-in';
+        });
+
+        document.getElementById('mode-drag-zoom').addEventListener('click', () => {
+            interactionMode = 'drag-zoom';
+            canvas.className = 'draggable cursor-drag-to-zoom';
+        });
+
+        canvas.addEventListener('click', (event) => {
+            if (interactionMode === 'click-zoom') {
+                clickZoom(event);
+            }
+        });
+
+        let translateX = 0;
+        let translateY = 0;
+
+
+        function clickZoom(event) {
+            const rect = canvas.getBoundingClientRect();
+            const clickX = event.clientX - rect.left;
+            const clickY = event.clientY - rect.top;
+
+            // Calculate distance from the center of the canvas
+            const distanceX = clickX - canvas.width / 2;
+            const distanceY = clickY - canvas.height / 2;
+
+            // Adjust translation based on distance and current scale
+            translateX -= (distanceX / scaleFactor) * zoomSensitivity;
+            translateY -= (distanceY / scaleFactor) * zoomSensitivity;
+
+            // Update scale
+            scaleFactor *= 1.2;
+
+            updateCanvasTransform();
+        }
+
+        function resetInteractable() {
+            console.log(interactObj);
+        }
+
+
+    </script>
+</body>
+
+</html>
