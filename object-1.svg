@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+<line x1="62" y1="64" x2="814" y2="64" stroke="black" />
+<line x1="62" y1="517" x2="814" y2="517" stroke="black" />
+<line x1="814" y1="517" x2="814" y2="64" stroke="black" />
+<line x1="62" y1="517" x2="62" y2="64" stroke="black" />
+<line x1="253" y1="357" x2="511" y2="357" stroke="black" />
+<line x1="252" y1="224" x2="512" y2="224" stroke="black" />
+<path d="M 253 357 A 67 67 0 0 1 252 224" fill="none" stroke="black" />
+<path d="M 512 224 A 67 67 0 0 1 511 357" fill="none" stroke="black" />
+</svg>

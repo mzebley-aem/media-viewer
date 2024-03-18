@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+<line x1="26" y1="44" x2="779" y2="44" stroke="black" />
+<line x1="779" y1="646" x2="779" y2="44" stroke="black" />
+<line x1="121" y1="158" x2="561" y2="158" stroke="black" />
+<line x1="665" y1="552" x2="665" y2="262" stroke="black" />
+<path d="M 121 158 A 114 114 0 0 1 26 44" fill="none" stroke="black" />
+<path d="M 561 158 A 117 117 0 0 1 665 262" fill="none" stroke="black" />
+<path d="M 779 646 A 116 116 0 0 1 665 552" fill="none" stroke="black" />
+</svg>
