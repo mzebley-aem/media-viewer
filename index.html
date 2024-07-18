@@ -3,1790 +3,712 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Media Viewer POC</title>
+    <title>SVG Path Editor POC</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
-
-
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.9.359/pdf.min.js"></script>
     <style>
         :root {
             --bg-color: #fff;
-            --line-color-1: #366;
-            --line-color-2: #a9a9a9;
-            --control-line-width: .75;
-            --control-handle-width: 1;
-            --handle-fill-color: white;
-            --handle-stroke-color: dodgerblue;
-            --handle-stroke-color-active: honeydew;
-            --handle-focus-outline-width: .075rem;
-            --handle-focus-outline-color: rgba(51, 217, 178, 1);
-        }
-
-        *,
-        *::before,
-        *::after {
-            -webkit-box-sizing: border-box;
-            -moz-box-sizing: border-box;
-            box-sizing: border-box;
+            --grid-color-1: #366;
+            --grid-color-2: #a9a9a9;
+            --handle-fill: white;
+            --handle-stroke: dodgerblue;
+            --handle-stroke-active: honeydew;
+            --handle-focus-outline: rgba(51, 217, 178, 1);
         }
 
         body,
         html {
             margin: 0;
             padding: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        .toolbar {
+            padding: 10px;
+            background: #f0f0f0;
+            border-bottom: 1px solid #ccc;
         }
 
         .media-wrapper {
             width: 100vw;
-            height: calc(100dvh - 4rem);
-            background-color: var(--bg-color);
-            background-image: linear-gradient(var(--line-color-1) 1.5px, transparent 1.5px), linear-gradient(90deg, var(--line-color-1) 1.5px, transparent 1.5px), linear-gradient(var(--line-color-2) 1px, transparent 1px), linear-gradient(90deg, var(--line-color-2) 1px, transparent 1px);
-            background-position: -1.5px -1.5px, -1.5px -1.5px, -1px -1px, -1px -1px;
-            background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+            height: calc(100vh - 50px);
             position: relative;
             overflow: hidden;
+            background-color: var(--bg-color);
+            background-image:
+                linear-gradient(var(--grid-color-1) 1.5px, transparent 1.5px),
+                linear-gradient(90deg, var(--grid-color-1) 1.5px, transparent 1.5px),
+                linear-gradient(var(--grid-color-2) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid-color-2) 1px, transparent 1px);
+            background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+            background-position: -1.5px -1.5px, -1.5px -1.5px, -1px -1px, -1px -1px;
         }
 
         .interact-wrapper {
-            transition: all .325s cubic-bezier(.3, .7, .4, 1);
-            will-change: transform;
-            transform: translate(0px, 0px);
-            z-index: 1;
-            position: relative;
+            position: absolute;
+            transform-origin: 0 0;
+            transition: transform 0.3s ease;
+            /* Smooth zoom transition */
         }
 
-        .interact-wrapper>svg {
+        #the-canvas {
             position: absolute;
             top: 0;
             left: 0;
         }
 
-        .interact-wrapper svg path[data-join-type]  {
-            stroke: hsl(180, 70%, 50%) !important;
-            fill: hsl(180, 70%, 50%) !important;
-            opacity:.575;
-        }
-
-        #the-canvas {
-            background-color: #fff;
-            width: 100%;
-            max-width: none;
-            user-select: none;
-            pointer-events: none;
-            border: .125rem solid #ccc;
-        }
-
-        .toolbar {
-            width: 100vw;
-            height: 2rem;
-            padding: .25rem;
-            background: #eaeaea;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border-bottom: .125rem solid #ccc;
-        }
-
-        .toolbar>div {
-            display: flex;
-            align-items: center;
-            gap: .25rem;
-        }
-
-
-        .samples {
-            width: 100vw;
-            height: 2rem;
-            padding: .25rem;
-            background: white;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            border-bottom: .125rem solid #ccc;
-        }
-
-        .samples {
-            color: blue;
-            cursor: pointer;
-            text-decoration: underline;
-        }
-
-        .cursor-pan {
-            cursor: grab;
-        }
-
-        .cursor-zoom-in {
-            cursor: zoom-in;
-        }
-
-        .cursor-drag-to-zoom {
-            cursor: crosshair;
-        }
-
-        .cursor-draw-line {
-            cursor: crosshair;
-        }
-
-        .draw-pane {
-            position: fixed;
-            bottom: 0;
-            right: 0;
-            background: grey;
-            padding: 1rem;
-            display: flex;
-            flex-direction: column;
-            z-index: 99;
-            display: none;
-        }
-
-        .control-handle,
-        .drag-handle {
-            stroke-width: var(--control-handle-width);
-            stroke: var(--handle-stroke-color);
-            fill: var(--handle-fill-color);
-            outline-width: var(--handle-focus-outline-width);
-            outline-style: solid;
-            outline-color: transparent;
-            border-radius: 50%;
-        }
-
-        .control-handle.active-selection,
-        .drag-handle.active-selection {
-            stroke: var(--handle-stroke-color-active);
-            outline-color: var(--handle-focus-outline-color);
-        }
-
-        .control-line {
-            stroke: #aaa;
-            stroke-width: var(--control-line-width);
+        #svg-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
             pointer-events: none;
         }
 
-        .control-ui-item {
-            display: none;
-            opacity: 0;
-            transition: opacity .225s ease;
+        .handle {
+            fill: var(--handle-fill);
+            stroke: var(--handle-stroke);
+            stroke-width: 2;
+            cursor: move;
         }
 
-        .reveal {
-            display: block;
-            opacity: 1;
-        }
-
-        .drop-target-active {
-            outline-style: dotted;
-            outline-color: var(--handle-focus-outline-color);
-            stroke: var(--handle-stroke-color-active);
-            fill: var(--handle-stroke-color-active);
+        .handle:hover,
+        .handle.active {
+            stroke: var(--handle-stroke-active);
+            outline: 2px solid var(--handle-focus-outline);
         }
 
         #property-panel {
             position: fixed;
             bottom: 20px;
             right: 20px;
-            background-color: white;
+            background: white;
+            padding: 10px;
             border: 1px solid #ccc;
-            padding: 15px;
             border-radius: 5px;
-            z-index: 99;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            min-width: 33vw;
+            display: none;
         }
     </style>
 </head>
 
 <body>
     <div class="toolbar">
-        <div>
-            <button id="mode-pan">Pan</button>
-            <button id="mode-draw-line">Draw Line</button>
-            <button id="zoom-click" style="margin-right:1rem">Click to Zoom</button>
-            <button id="zoom-fit">Zoom to fit</button>
-            <button id="zoom-in">Zoom In</button>
-            <button id="zoom-out">Zoom Out</button>
-            <select id="zoom-level">
-                <option value="5">500%</option>
-                <option value="2">200%</option>
-                <option value="1" selected>100%</option>
-                <option value="0.75">75%</option>
-                <option value="0.5">50%</option>
-            </select>
-            <p>Current zoom: <span id="current-zoom-level"></span></p>
-        </div>
-        <div>
-            <input type="file" id="pdf-upload" accept="application/pdf,image/*">
-            <select id="page-selector"></select>
-        </div>
+        <button id="load-pdf">Load PDF</button>
+        <button id="load-svg">Load SVG</button>
+        <button id="mode-pan">Pan</button>
+        <button id="mode-select">Select</button>
+        <button id="mode-draw">Draw</button>
+        <button id="zoom-fit">Zoom to Fit</button>
+        <span>Zoom: <span id="zoom-level">100%</span></span>
     </div>
-    <div class="samples">
-        <a id="single-pdf-sample">Single page PDF</a>
-        <a id="multi-pdf-sample">Multi-page PDF</a>
-        <a id="base-64-sample">Base64 PDF</a>
-        <a id="image-sample">Random image</a>
-        <span style="margin-right:3rem"></span>
-        <input type="file" id="svg-upload" accept=".svg">
-    </div>
-    <div class="media-wrapper" id="media-wrapper">
-        <div class="interact-wrapper cursor-pan" id="interact-wrapper">
+    <div class="media-wrapper">
+        <div class="interact-wrapper">
             <canvas id="the-canvas"></canvas>
-            <svg id="svgOverlay" class="svg-overlay" style="position: absolute; top: 0; left: 0;"></svg>
+            <svg id="svg-overlay"></svg>
         </div>
-        <div id="draw-pane" class="draw-pane">
-            <label>
-                <input type="checkbox" id="arc-mode-toggle"> Arc Mode
-            </label>
-            <label>Handle Radius: <input type="number" id="handle-radius" value="2"></label>
-            <label>Handle Fill: <input type="color" id="handle-fill" value="#ffffff"></label>
-            <label>Handle Stroke: <input type="color" id="handle-stroke" value="#1e90ff"></label>
-            <label>Handle Stroke Width: <input type="number" id="handle-stroke-width" value="10"></label>
-            <label>Line Stroke Width: <input type="number" id="line-stroke-width" value="1"></label>
-            <button id="applyStyles">Apply to Selected</button>
-        </div>
-        <div id="property-panel" style="display: none;">
-            <h3>Path Properties</h3>
-            <div>
-                <label for="stroke-color">Stroke Color:</label>
-                <input type="color" id="stroke-color">
-            </div>
-            <div>
-                <label for="stroke-width">Stroke Width:</label>
-                <input type="range" id="stroke-width" min="1" max="20" step="0.5">
-                <span id="stroke-width-value"></span>
-            </div>
-        </div>
+    </div>
+    <div id="property-panel">
+        <h3>Path Properties</h3>
+        <label>
+            Stroke Width:
+            <input type="number" id="stroke-width" min="1" max="10" step="1" value="1">
+        </label>
+        <button id="delete-path">Delete Path</button>
     </div>
 
+    <input type="file" id="pdf-input" accept=".pdf" style="display: none;">
+    <input type="file" id="svg-input" accept=".svg" style="display: none;">
 
     <script type="module">
-        import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.269/pdf.min.mjs';
-        let pdfDoc = null;
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.269/pdf.worker.min.mjs';
+        // PDF.js initialization
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.9.359/pdf.worker.min.js';
 
-        const sns = 'http://www.w3.org/2000/svg';
-        let interactionMode = 'pan'; // Default mode
-
-        // Setup page items and canvas
-        // Wrappers and containers
-        const mediaViewer = document.getElementById('media-wrapper');
-        const interactCanvasWrapper = document.getElementById('interact-wrapper');
+        // DOM elements
         const canvas = document.getElementById('the-canvas');
         const ctx = canvas.getContext('2d');
-        const svgOverlay = document.getElementById('svgOverlay');
-
-        // Buttons and dropdowns
-        // Zoom buttons
-        const zoomInBtn = document.getElementById('zoom-in');
-        const zoomOutBtn = document.getElementById('zoom-out');
-        const zoomLevelSelector = document.getElementById('zoom-level');
-        const zoomFitBtn = document.getElementById('zoom-fit');
-        const zoomClickBtn = document.getElementById('zoom-click');
-
-        // Sample item buttons
-        const pdfUploadBtn = document.getElementById('pdf-upload');
-
-        // Interaction mode buttons
-        const panBtn = document.getElementById('mode-pan');
-        const drawBtn = document.getElementById('mode-draw-line');
-        const pageSelector = document.getElementById('page-selector');
-
-
-
-        // Zoom logic
-        const currentZoomLevelDisplay = document.getElementById('current-zoom-level');
-
-        const zoomSensitivity = 0.5;
-        let scaleFactor = 1;
-        const zoomStep = 0.1;
-
-        const updateZoomDisplay = () => {
-            currentZoomLevelDisplay.textContent = `${getCurrentZoomLevel()}%`;
-        }
-
-        const getCurrentZoomLevel = () => {
-            return Math.round(scaleFactor * 100);
-        }
-
-        const zoomIn = () => {
-            updateScaleFactor(zoomStep, 'plus');
-            updateCanvasTransform();
-            updateZoomDisplay();
-        }
-
-        function zoomOut() {
-            updateScaleFactor(zoomStep, 'minus');
-            updateCanvasTransform();
-            updateZoomDisplay();
-        }
-
-        function setZoomLevel(level) {
-            updateScaleFactor(level, 'equals');
-            updateCanvasTransform();
-            updateZoomDisplay();
-        }
-
-        function zoomToFit() {
-            const fitCanvas = ((Math.round((mediaViewer.offsetWidth / canvas.width) * 100)) / 100);
-            updateScaleFactor(fitCanvas, 'equals');
-            canvasTranslateX = 0;
-            canvasTranslateY = 0;
-            updateCanvasTransform();
-            updateZoomDisplay();
-        }
-
-        function clickZoom(event) {
-            const rect = canvas.getBoundingClientRect();
-            const clickX = event.clientX - rect.left;
-            const clickY = event.clientY - rect.top;
-
-            // Calculate distance from the center of the canvas
-            const distanceX = clickX - canvas.width / 2;
-            const distanceY = clickY - canvas.height / 2;
-
-            // Adjust translation based on distance and current scale
-            canvasTranslateX -= (distanceX / scaleFactor) * zoomSensitivity;
-            canvasTranslateY -= (distanceY / scaleFactor) * zoomSensitivity;
-
-            // Update scale
-            updateScaleFactor(1.2, 'times');
-
-            updateCanvasTransform();
-        }
-
-        function updateScaleFactor(level, type) {
-            if (type === 'equals') {
-                scaleFactor = level;
-            } else if (type === 'times') {
-                scaleFactor *= level;
-            } else if (type === 'plus') {
-                scaleFactor += level;
-            } else if (type === 'minus') {
-                scaleFactor -= level;
-            }
-
-            // document.documentElement.style.setProperty('--control-line-width', (scaleFactor * 2) / 10);
-        }
-
-
-        // Toolbar button event listeners
-        // Zoom buttons
-        zoomInBtn.addEventListener('click', zoomIn);
-        zoomOutBtn.addEventListener('click', zoomOut);
-        zoomClickBtn.addEventListener('click', function (event) {
-            interactionMode = 'zoom';
-            interactCanvasWrapper.className = 'interact-wrapper cursor-zoom-in';
-            interactCanvasObj.options.drag.enabled = false;
-        });
-        zoomLevelSelector.addEventListener('blur', function (event) {
-            const selectedZoomLevel = parseFloat(this.value);
-            const currentZoomLevel = getCurrentZoomLevel();
-
-            // Only update if the current zoom level differs from the selected one
-            if (currentZoomLevel !== selectedZoomLevel) {
-                setZoomLevel(selectedZoomLevel);
-            }
-        });
-        zoomFitBtn.addEventListener('click', zoomToFit);
-
-        // Interaction mode buttons
-        panBtn.addEventListener('click', () => {
-            interactionMode = 'pan';
-            interactCanvasWrapper.className = 'interact-wrapper cursor-pan';
-            interactCanvasObj.options.drag.enabled = true;
-        });
-        drawBtn.addEventListener('click', () => {
-            interactionMode = 'draw';
-            interactCanvasWrapper.className = 'interact-wrapper cursor-draw-line';
-            interactCanvasObj.options.drag.enabled = false;
-        });
-        pageSelector.addEventListener('change', (e) => {
-            displayPage(parseInt(e.target.value));
-        });
-
-        pdfUploadBtn.addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            if (file.type === 'application/pdf') {
-                // Handle PDF files as before
-                renderPDF(file);
-            } else if (file.type.startsWith('image/')) {
-                // Handle image files
-                renderImage(file);
-            } else {
-                alert('Please select a PDF or an image file.');
-            }
-        });
-
-
-
-        // Canvas manipulation and interaction
-        let canvasTranslateX = 0;
-        let canvasTranslateY = 0;
-
-        interactCanvasWrapper.addEventListener('click', function (event) {
-            if (interactionMode === 'zoom') {
-                clickZoom(event);
-            }
-        });
-
-        function resetCanvasTransform() {
-            updateScaleFactor(1, 'equals');
-            updateSvgOverlaySize();
-            canvasTranslateX = 0; // Reset translate values to default
-            canvasTranslateY = 0;
-        }
-
-        function dragCanvasListener(event) {
-            if (interactionMode === 'pan') {
-                canvasTranslateX += event.dx;
-                canvasTranslateY += event.dy;
-                updateCanvasTransform();
-            }
-        }
-
-        function updateCanvasTransform() {
-            interactCanvasWrapper.style.transform = `translate(${canvasTranslateX}px, ${canvasTranslateY}px)`;
-            interactCanvasWrapper.style.width = `${canvas.width * (scaleFactor)}px`;
-            interactCanvasWrapper.style.height = `${canvas.height * (scaleFactor)}px`;
-            interactCanvasObj.reflow({ name: 'drag', axis: 'xy' })
-            updateSvgScale();
-        }
-
-        // target elements with the "draggable" class
-        const interactCanvasObj = interact('#interact-wrapper')
-            .draggable({
-                // enable inertial throwing
-                inertia: true,
-                styleCursor: false,
-                // keep the element within the area of it's parent
-                modifiers: [
-                    interact.modifiers.restrictRect({
-                        restriction: 'parent',
-                        elementRect: { top: 0.75, left: 0.75, bottom: 0.25, right: 0.25 },
-                        endOnly: true
-                    })
-                ],
-                // disable autoScroll
-                autoScroll: false,
-                cursorChecker() {
-                    // don't set a cursor for drag actions
-                    return null
-                },
-                onstart: function (event) {
-                },
-
-                // call this function on every dragmove event
-                onmove: dragCanvasListener,
-                // call this function on every dragend event
-                onend: function (event) {
-                    interactCanvasObj.reflow({ name: 'drag', axis: 'xy' })
-                }
-            });
-
-
-
-
-        // Drawing logic
-
-
-
-        function displayPage(pageNum) {
-            pdfDoc.getPage(pageNum).then(page => {
-                var viewport = page.getViewport({ scale: 1 });
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
-
-                page.render({ canvasContext: ctx, viewport: viewport });
-            });
-        }
-
-
-        function renderPDF(file) {
-            resetCanvasTransform();
-            const fileReader = new FileReader();
-            fileReader.onload = function () {
-                const typedArray = new Uint8Array(this.result);
-                pdfjsLib.getDocument({ data: typedArray }).promise.then(doc => {
-                    pdfDoc = doc;
-                    pageSelector.innerHTML = '';
-
-                    for (let i = 1; i <= pdfDoc.numPages; i++) {
-                        let option = document.createElement('option');
-                        option.textContent = 'Page ' + i;
-                        option.value = i;
-                        pageSelector.appendChild(option);
-                    }
-
-                    displayPage(1);
-                });
-            };
-            fileReader.readAsArrayBuffer(file);
-        }
-
-        function loadPDFFromURL(url) {
-            resetCanvasTransform();
-            pdfjsLib.getDocument(url).promise.then(doc => {
-                pdfDoc = doc;
-                pageSelector.innerHTML = '';
-
-                for (let i = 1; i <= pdfDoc.numPages; i++) {
-                    let option = document.createElement('option');
-                    option.textContent = 'Page ' + i;
-                    option.value = i;
-                    pageSelector.appendChild(option);
-                }
-
-                displayPage(1);
-            }).catch(error => {
-                console.error("Error loading PDF:", error);
-                // Handle error (e.g., show a message to the user)
-            });
-        }
-
-
-        // Event listeners for buttons and dropdown
-
-
-        // document.getElementById('object-1').addEventListener('click', () => {
-        //     addSvgFileToOverlay('./object-2.svg');
-        // });
-
-        // document.getElementById('object-2').addEventListener('click', () => {
-        //     addSvgFileToOverlay('./object-2.svg');
-        // });
-
-
-        // Create the <svg> "canvas" on which we'll draw any lines or shapes to be added
-        async function addSvgFileToOverlay(svgFilename) {
-            try {
-                const response = await fetch(svgFilename);
-                const svgContent = await response.text();
-                const parser = new DOMParser();
-                const svgDoc = parser.parseFromString(svgContent, "image/svg+xml");
-                const svgElement = svgDoc.documentElement;
-
-                svgElement.classList.add("overlay-svg");
-                svgElement.setAttribute("width", "100px"); // Set initial size
-                svgElement.setAttribute("height", "auto");
-
-                document.getElementById("interact-wrapper").appendChild(svgElement);
-
-                updateSvgScale(); // Scale immediately after adding
-            } catch (error) {
-                console.error("Error fetching SVG:", error);
-            }
-        }
-
-        function updateSvgScale() {
-            document.querySelectorAll(".svg-overlay").forEach(svg => {
-                // Ensure transform-origin is set correctly, typically to "0 0" to match canvas behavior
-                svg.style.transformOrigin = '0 0';
-
-                // Apply a transform that exactly matches the canvas/image scaling and translation
-                // If scaling appears doubled, ensure scaleFactor and translations are correctly calculated
-                const transform = `scale(${scaleFactor})`;
-                svg.style.transform = transform;
-            });
-        }
-
-
-
-
-
-
-        // interactCanvasObj.options.drag.enabled = false;
-
-        document.getElementById('handle-radius').addEventListener('input', function () {
-            handleRadius = this.value;
-        });
-
-        document.getElementById('handle-fill').addEventListener('input', function () {
-            handleFill = this.value;
-        });
-
-        document.getElementById('handle-stroke').addEventListener('input', function () {
-            handleStroke = this.value;
-        });
-
-        document.getElementById('handle-stroke-width').addEventListener('input', function () {
-            handleStrokeWidth = this.value;
-        });
-
-        document.getElementById('line-stroke-width').addEventListener('input', function () {
-            // Assuming lineStrokeWidth is your variable for line stroke width
-            lineStrokeWidth = this.value;
-        });
-
-
-        // Line drawing logic
-        let startX, startY, line;
-
-
-
-        // Function to create a new line
-        let lineCounter = 0; // Initialize a counter for line IDs
-
-        function createLine(x1, y1, x2, y2, stroke = null) {
-            const newLine = document.createElementNS(sns, 'line');
-            newLine.setAttribute('x1', x1);
-            newLine.setAttribute('y1', y1);
-            newLine.setAttribute('x2', x2);
-            newLine.setAttribute('y2', y2);
-            newLine.setAttribute('stroke', 'black');
-            newLine.setAttribute('stroke-width', stroke ?? lineStrokeWidth);
-            newLine.setAttribute('id', `line-${lineCounter++}`); // Assign unique ID
-            newLine.classList.add('reveal'); // Add a class to style the line
-
-            return newLine;
-        }
-
-        // Function to get the adjusted mouse position accounting for translations and scale
-        function getAdjustedPosition(event) {
-            const rect = svgOverlay.getBoundingClientRect(); // Get the bounding rectangle of the svgOverlay
-            const x = (event.clientX - rect.left) / scaleFactor;
-            const y = (event.clientY - rect.top) / scaleFactor;
-            return { x, y };
-        }
-
-        function makeLineDraggable(lineId) {
-            interact(`#${lineId}`).draggable({
-                listeners: {
-                    move(event) {
-                        // Logic to handle the drag movement
-                        let dx = event.dx;
-                        let dy = event.dy;
-
-                        // Apply the movement to the line by updating its attributes
-                        const lineElement = event.target;
-                        let x1 = parseFloat(lineElement.getAttribute('x1')) + dx;
-                        let y1 = parseFloat(lineElement.getAttribute('y1')) + dy;
-                        let x2 = parseFloat(lineElement.getAttribute('x2')) + dx;
-                        let y2 = parseFloat(lineElement.getAttribute('y2')) + dy;
-
-                        lineElement.setAttribute('x1', x1);
-                        lineElement.setAttribute('y1', y1);
-                        lineElement.setAttribute('x2', x2);
-                        lineElement.setAttribute('y2', y2);
-                    }
-                }
-            });
-        }
-
-        function activateInteractElement(element) {
-            // Directly enable dragging for the element
-            interact(element).draggable({ enabled: true });
-            element.classList.add('reveal'); // Mark as active for styling
-        }
-
-        function deactivateAllDrawnElements() {
-            hidePropertyPanel();
-            linesAndHandles.forEach(({ line, handles }) => {
-                interact(line).draggable({ enabled: false });
-                // line.classList.remove('reveal');
-                handles.forEach(handle => {
-                    interact(handle).draggable({ enabled: false });
-                    // handle.style.display = 'none';
-                    // handle.classList.remove('reveal');
-                });
-            });
-            document.querySelectorAll(`.reveal`).forEach(el => {
-                el.classList.remove('reveal');
-            });
-        }
-
-        function removeActiveSelectedElementStyling() {
-            document.querySelectorAll(`.active-selection`).forEach(el => {
-                el.classList.remove('active-selection');
-            });
-        }
-
+        const svgOverlay = document.getElementById('svg-overlay');
+        const interactWrapper = document.querySelector('.interact-wrapper');
+        const pdfInput = document.getElementById('pdf-input');
+        const svgInput = document.getElementById('svg-input');
+        const propertyPanel = document.getElementById('property-panel');
+
+        // Global variables
+        let currentPdf = null;
+        let currentScale = 1;
+        let currentMode = 'pan';
         let selectedPath = null;
 
-        function showPropertyPanel(path) {
-    selectedPath = path;
-    const panel = document.getElementById('property-panel');
-    panel.style.display = 'block';
+        // Interaction states
+        let isDragging = false;
+        let startX, startY;
 
-    const strokeColor = document.getElementById('stroke-color');
-    const strokeWidth = document.getElementById('stroke-width');
-    const strokeWidthValue = document.getElementById('stroke-width-value');
-
-    // Set initial values
-    strokeColor.value = path.getAttribute('stroke') || '#000000';
-    strokeWidth.value = path.getAttribute('stroke-width') || '1';
-    strokeWidthValue.textContent = strokeWidth.value;
-
-    // Remove previous event listeners if any
-    strokeColor.removeEventListener('input', updateStrokeColor);
-    strokeWidth.removeEventListener('input', updateStrokeWidth);
-
-    // Event listener functions
-    function updateStrokeColor() {
-        path.setAttribute('stroke', this.value);
-    }
-
-    function updateStrokeWidth() {
-        path.setAttribute('stroke-width', this.value);
-        strokeWidthValue.textContent = this.value;
-    }
-
-    // Add new event listeners
-    strokeColor.addEventListener('input', updateStrokeColor);
-    strokeWidth.addEventListener('input', updateStrokeWidth);
-
-    // Store event listener functions for later removal
-    path._updateStrokeColor = updateStrokeColor;
-    path._updateStrokeWidth = updateStrokeWidth;
-}
-
-        function hidePropertyPanel() {
-    const panel = document.getElementById('property-panel');
-    panel.style.display = 'none';
-
-    if (selectedPath) {
-        // Remove event listeners when hiding the panel
-        const strokeColor = document.getElementById('stroke-color');
-        const strokeWidth = document.getElementById('stroke-width');
-        strokeColor.removeEventListener('input', selectedPath._updateStrokeColor);
-        strokeWidth.removeEventListener('input', selectedPath._updateStrokeWidth);
-    }
-
-    selectedPath = null;
-}
-        
-        function activateDrawnElementGroup(elementId) {
-            // Deactivate all elements first to ensure only one group is active at a time
-            deactivateAllDrawnElements();
-
-            const element = document.getElementById(`${elementId}`);
-            if (element) {
-                activateInteractElement(element);
-                showPropertyPanel(element);
-                // Apply dynamic styling to the activated element
-                // element.setAttribute('stroke-width', lineStrokeWidth);
-            }
-
-            const handles = document.querySelectorAll(`.control-ui-item[data-line-id="${elementId}"], .control-ui-item[control-line-id="${elementId}"]`);
-            handles.forEach(handle => {
-                activateInteractElement(handle);
-                // handle.style.display = 'block';
-                handle.classList.add('reveal');
+        // Initialize
+        function init() {
+            document.getElementById('load-pdf').addEventListener('click', () => pdfInput.click());
+            document.getElementById('load-svg').addEventListener('click', () => svgInput.click());
+            document.getElementById('mode-pan').addEventListener('click', () => setMode('pan'));
+            document.getElementById('mode-select').addEventListener('click', () => setMode('select'));
+            document.getElementById('mode-draw').addEventListener('click', () => setMode('draw'));
+            document.getElementById('zoom-fit').addEventListener('click', zoomToFit);
+            pdfInput.addEventListener('change', loadPDF);
+            svgInput.addEventListener('change', loadSVG);
+            interactWrapper.addEventListener('mousedown', handleMouseDown);
+            interactWrapper.addEventListener('mousemove', handleMouseMove);
+            interactWrapper.addEventListener('mouseup', handleMouseUp);
+            interactWrapper.addEventListener('wheel', handleWheel);
+            window.addEventListener('resize', () => {
+                scaleSVGToCanvas();
+                zoomToFit();
             });
         }
 
-        let handleRadius = 6; // Radius of the handle circle
-        let handleFill = 'white'; // Fill color of the handle
-        let handleStroke = 'dodgerblue'; // Stroke color of the handle
-        let handleStrokeWidth = 3; // Stroke width of the handle
-        let lineStrokeWidth = 1; // Stroke width of the line
-
-        function createHandleForLine(element, atStart) {
-            const handle = document.createElementNS(sns, 'circle');
-            handle.setAttribute('r', handleRadius);
-            // handle.setAttribute('fill', handleFill);
-            // handle.setAttribute('stroke', handleStroke);
-            // handle.setAttribute('stroke-width', handleStrokeWidth);
-
-            let coors = {};
-            if (element.tagName === 'line') {
-                coors.x = element.getAttribute(atStart ? 'x1' : 'x2');
-                coors.y = element.getAttribute(atStart ? 'y1' : 'y2');
-            } else if (element.tagName === 'path') {
-                const d = element.getAttribute('d');
-                coors = getCoordinatesFromPath(d, atStart);
-            }
-
-            // Convert to numbers
-            coors.x = parseFloat(coors.x);
-            coors.y = parseFloat(coors.y);
-            handle.setAttribute('cx', coors.x);
-            handle.setAttribute('cy', coors.y);
-            handle.classList.add('drag-handle', 'reveal', 'control-ui-item');
-            handle.setAttribute('data-line-id', element.getAttribute('id'));
-            handle.setAttribute('data-is-start-handle', atStart.toString());
-
-            svgOverlay.appendChild(handle);
-            return handle;
-        }
-
-        const linesAndHandles = []; // To track lines and their handles
-
-        function updateConnectingLine(connectingLine, controlX, controlY, midX, midY) {
-            connectingLine.setAttribute('x1', controlX);
-            connectingLine.setAttribute('y1', controlY);
-            connectingLine.setAttribute('x2', midX);
-            connectingLine.setAttribute('y2', midY);
-        }
-
-        function assignLineDragInteraction(line) {
-            line.setAttribute('data-join-type', 'line');
-            interact(line)
-                .draggable({
-                    // enable inertial throwing
-                    inertia: false,
-                    enabled: true,
-                    styleCursor: false,
-                    // keep the element within the area of its parent
-                    modifiers: [
-                        interact.modifiers.restrictRect({
-                            restriction: 'parent',
-                            // elementRect: { top: 1, left: 1, bottom: 0, right: 0 },
-                            endOnly: false
-                        })
-                    ],
-                    cursorChecker() {
-                        // don't set a cursor for drag actions
-                        return null
-                    },
-                    // disable autoScroll
-                    autoScroll: false,
-                    // call this function on every dragmove event
-                    onmove: dragLineListener,
-                    // call this function on every dragend event
-                    onend: function (event) {
-                        interact(line).reflow({ name: 'drag', axis: 'xy' });
-                    }
-                });
-        }
-
-        function assignArcDragInteraction(arc) {
-        arc.setAttribute('data-join-type', 'arc');
-
-        interact(arc)
-            .draggable({
-                inertia: false,
-                enabled: true,
-                styleCursor: false,
-                modifiers: [
-                    interact.modifiers.restrictRect({
-                        restriction: 'parent',
-                        endOnly: true
-                    })
-                ],
-                cursorChecker() {
-                    return null
-                },
-                autoScroll: false,
-                onmove: handleArcDrag,
-                onend: function (event) {
-                    interact(arc).reflow({ name: 'drag', axis: 'xy' });
-                },
-                onstart: function (event) {
-                    showPropertyPanel(event.target);
-                    activatePathHandles(event.target);
-                },
-            });
-    }
-
-    function handleArcDrag(event) {
-        const arc = event.target;
-        const d = arc.getAttribute('d');
-        const commands = d.match(/[MLHVCSQTAZmlhvcsqtaz][^MLHVCSQTAZmlhvcsqtaz]*/g);
-
-        const updatedCommands = commands.map(cmd => {
-            const type = cmd[0].toUpperCase();
-            const coords = cmd.slice(1).trim().split(/[\s,]+/).map(parseFloat);
-
-            switch (type) {
-                case 'M':
-                case 'L':
-                case 'Q':
-                    for (let i = 0; i < coords.length; i += 2) {
-                        coords[i] += event.dx / scaleFactor;
-                        coords[i + 1] += event.dy / scaleFactor;
-                    }
-                    break;
-                // Add cases for other command types as needed
-            }
-
-            return type + coords.join(' ');
-        });
-
-        arc.setAttribute('d', updatedCommands.join(' '));
-        updateHandlesForPath(arc);
-    }
-
-    function updateHandlesForPath(path) {
-        const handles = svgOverlay.querySelectorAll(`.handle[data-line-id="${path.id}"]`);
-        const d = path.getAttribute('d');
-        const commands = d.match(/[MLHVCSQTAZmlhvcsqtaz][^MLHVCSQTAZmlhvcsqtaz]*/g);
-
-        handles.forEach(handle => {
-            const index = parseInt(handle.dataset.index);
-            const cmd = commands[index];
-            const type = cmd[0].toUpperCase();
-            const coords = cmd.slice(1).trim().split(/[\s,]+/).map(parseFloat);
-
-            switch (type) {
-                case 'M':
-                case 'L':
-                    handle.setAttribute('cx', coords[0]);
-                    handle.setAttribute('cy', coords[1]);
-                    break;
-                case 'C':
-                    if (handle.classList.contains('first-control')) {
-                        handle.setAttribute('cx', coords[0]);
-                        handle.setAttribute('cy', coords[1]);
-                    } else if (handle.classList.contains('second-control')) {
-                        handle.setAttribute('cx', coords[2]);
-                        handle.setAttribute('cy', coords[3]);
-                    } else {
-                        handle.setAttribute('cx', coords[4]);
-                        handle.setAttribute('cy', coords[5]);
-                    }
-                    break;
-                case 'Q':
-                    if (handle.classList.contains('control')) {
-                        handle.setAttribute('cx', coords[0]);
-                        handle.setAttribute('cy', coords[1]);
-                    } else {
-                        handle.setAttribute('cx', coords[2]);
-                        handle.setAttribute('cy', coords[3]);
-                    }
-                    break;
-                // Add cases for other command types as needed
-            }
-        });
-    }
-        
-        function assignHandleDragInteraction(handle) {
-            interact(handle)
-                .draggable({
-                    enabled: true,
-                    modifiers: [
-                        interact.modifiers.restrictRect({
-                            restriction: 'parent',
-                            endOnly: true
-                        })
-                    ],
-                    listeners: {
-                        move: dragHandleListener
-                    }
-                });
-        }
-
-        function dragLineListener(event) {
-            // Correctly adjust deltas for zoom level
-            let dx = event.dx / scaleFactor;
-            let dy = event.dy / scaleFactor;
-
-            // Retrieve the line element and its ID
-            const lineElement = event.target;
-            const lineId = lineElement.getAttribute('id');
-
-            // Find the corresponding handles for this line
-            const { handles } = linesAndHandles.find(({ line }) => line.id === lineId) || {};
-            // console.log(handles);
-
-            // Update line position
-            const x1 = parseFloat(lineElement.getAttribute('x1')) + dx;
-            const y1 = parseFloat(lineElement.getAttribute('y1')) + dy;
-            const x2 = parseFloat(lineElement.getAttribute('x2')) + dx;
-            const y2 = parseFloat(lineElement.getAttribute('y2')) + dy;
-
-            lineElement.setAttribute('x1', x1);
-            lineElement.setAttribute('y1', y1);
-            lineElement.setAttribute('x2', x2);
-            lineElement.setAttribute('y2', y2);
-
-            // Update handle positions if they exist
-            if (handles) {
-                handles.forEach(handle => {
-                    const isStartHandle = handle.getAttribute('data-is-start-handle') === 'true';
-                    handle.setAttribute('cx', isStartHandle ? x1 : x2);
-                    handle.setAttribute('cy', isStartHandle ? y1 : y2);
-                });
+        // Load PDF
+        async function loadPDF(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                currentPdf = pdf;
+                renderPage(1);
             }
         }
 
-        function dragHandleListener(event) {
-            const handle = event.target;
-            const lineId = handle.getAttribute('data-line-id');
-            const isStartHandle = handle.getAttribute('data-is-start-handle') === 'true';
-            const isSharedHandle = handle.getAttribute('data-shared-handle-for');
-            const isControlHandle = handle.getAttribute('data-is-control-handle') === 'true';
-
-            // Assign the dragged element and handle to the global variables
-            draggedElement = svgOverlay.querySelector(`#${lineId}`);
-            draggedHandle = handle;
-
-            // Update the handle's position
-            let cx = parseFloat(handle.getAttribute('cx')) + event.dx / scaleFactor;
-            let cy = parseFloat(handle.getAttribute('cy')) + event.dy / scaleFactor;
-            handle.setAttribute('cx', cx);
-            handle.setAttribute('cy', cy);
-
-            // Find the associated element (line or arc) and update its path
-            const element = svgOverlay.querySelector(`#${lineId}`);
-            if (element) {
-                let draggedPoint = null;
-                const joinType = draggedElement.getAttribute('data-join-type');
-                if (element.tagName === 'line') {
-                    // Update line start or end point
-                    if (isStartHandle) {
-                        element.setAttribute('x1', cx);
-                        element.setAttribute('y1', cy);
-                        draggedPoint = { x: cx, y: cy };
-                    } else if (isSharedHandle) {
-                        // Update the connected lines when dragging the middle handle
-                        const line1 = draggedElement;
-                        const line2 = svgOverlay.querySelector(`#${isSharedHandle}`);
-                        console.log(line1);
-                        console.log(line2);
-
-                        line1.setAttribute('x2', cx);
-                        line1.setAttribute('y2', cy);
-                        line2.setAttribute('x1', cx);
-                        line2.setAttribute('y1', cy);
-                    } else {
-                        element.setAttribute('x2', cx);
-                        element.setAttribute('y2', cy);
-                        draggedPoint = { x: cx, y: cy };
-                    }
-                } else if (element.tagName === 'path') {
-                    const d = element.getAttribute('d');
-                    const coords = d.match(/M\s*([\d\.]+)\s*,\s*([\d\.]+)\s*Q\s*([\d\.]+)\s*,\s*([\d\.]+)\s*([\d\.]+)\s*,\s*([\d\.]+)/);
-
-
-                    if (coords) {
-                        const startX = isStartHandle ? cx : parseFloat(coords[1]);
-                        const startY = isStartHandle ? cy : parseFloat(coords[2]);
-                        const controlX = isControlHandle ? cx : parseFloat(coords[3]);
-                        const controlY = isControlHandle ? cy : parseFloat(coords[4]);
-                        const endX = !isStartHandle && !isControlHandle ? cx : parseFloat(coords[5]);
-                        const endY = !isStartHandle && !isControlHandle ? cy : parseFloat(coords[6]);
-
-                        updateArcPath(element, startX, startY, endX, endY, controlX, controlY);
-
-                        // Update the control line
-                        const midX = (startX + endX) / 2;
-                        const midY = (startY + endY) / 2;
-                        const controlLine = svgOverlay.querySelector(`.control-ui-item[control-line-id="${lineId}"]`);
-                        if (controlLine) {
-                            updateConnectingLine(controlLine, controlX, controlY, midX, midY);
-                        }
-
-                        if (isStartHandle) {
-                            draggedPoint = { x: startX, y: startY };
-                        } else if (!isControlHandle) {
-                            draggedPoint = { x: endX, y: endY };
-                        }
-                    }
-                }
-
-                if (draggedPoint) {
-                    checkProximity(draggedPoint, element);
-                }
-            }
-        }
-
-        svgOverlay.addEventListener('mousedown', function (event) {
-            if (selectedPath) hidePropertyPanel();
-            if (interactionMode === 'draw') {
-                const isArcMode = document.getElementById('arc-mode-toggle').checked;
-
-                if (isArcMode) {
-                    startDrawingArc(event);
-                } else {
-                    startDrawingLine(event);
-                }
-            }
-        });
-
-        // Function to start drawing an arc
-        function startDrawingArc(event) {
-            const { x, y } = getAdjustedPosition(event);
-            startX = x;
-            startY = y;
-
-            // Initialize the arc
-            const arcPath = createArcPath(startX, startY);
-            svgOverlay.appendChild(arcPath);
-
-            // Create handles for the start, end, and control points of the arc
-            const startHandle = createHandleForLine(arcPath, true);
-            const endHandle = createHandleForLine(arcPath, false);
-            const { handle: controlHandle, connectingLine } = createHandleForControlPoint(arcPath);
-
-            const obj = { line: arcPath, handles: [startHandle, endHandle, controlHandle], connectingLine }
-
-
-            // Track the arc and its handles
-            linesAndHandles.push(obj);
-
-            // Event handler for updating the arc's end point on mouse move
-            function mouseMoveHandler(event) {
-                const { x: moveX, y: moveY } = getAdjustedPosition(event);
-                const controlX = (startX + moveX) / 2;
-                const controlY = (startY + moveY) / 2;
-                updateArcPath(arcPath, startX, startY, moveX, moveY, controlX, controlY);
-                updateHandlePosition(endHandle, moveX, moveY);
-                updateHandlePosition(controlHandle, controlX, controlY);
-
-                const midX = (startX + moveX) / 2;
-                const midY = (startY + moveY) / 2;
-                updateConnectingLine(connectingLine, controlX, controlY, midX, midY);
-            }
-
-            // Update arc's end point on mouse move
-            svgOverlay.addEventListener('mousemove', mouseMoveHandler);
-
-            // Finalize the arc on mouse up
-            svgOverlay.addEventListener('mouseup', function () {
-                svgOverlay.removeEventListener('mousemove', mouseMoveHandler);
-                assignArcDragInteraction(arcPath);
-                obj.handles.forEach(handle => assignHandleDragInteraction(handle));
-            }, { once: true });
-        }
-
-        // Function to start drawing a line
-        function startDrawingLine(event) {
-            const { x, y } = getAdjustedPosition(event);
-            startX = x;
-            startY = y;
-
-            // Initialize the line
-            line = createLine(startX, startY, startX, startY);
-            svgOverlay.appendChild(line);
-
-            // Create handles for both ends of the line
-            const startHandle = createHandleForLine(line, true);
-            const endHandle = createHandleForLine(line, false);
-
-            // Track the line and its handles
-            const obj = { line, handles: [startHandle, endHandle] };
-            linesAndHandles.push(obj);
-
-            // Event handler for updating the line's end point on mouse move
-            function mouseMoveHandler(event) {
-                const { x: moveX, y: moveY } = getAdjustedPosition(event);
-                updateLineEndPoint(line, moveX, moveY);
-                updateHandlePosition(endHandle, moveX, moveY);
-            }
-
-            // Update line's end point on mouse move
-            svgOverlay.addEventListener('mousemove', mouseMoveHandler);
-
-            // Finalize the line on mouse up
-            svgOverlay.addEventListener('mouseup', function () {
-                svgOverlay.removeEventListener('mousemove', mouseMoveHandler);
-                assignLineDragInteraction(line);
-                obj.handles.forEach(handle => assignHandleDragInteraction(handle));
-            }, { once: true });
-        }
-
-        // Function to create an arc path element
-        function createArcPath(startX, startY, stroke = null) {
-            const arcPath = document.createElementNS(sns, 'path');
-            arcPath.setAttribute('d', `M ${startX},${startY} Q ${startX},${startY} ${startX},${startY}`);
-            arcPath.setAttribute('stroke', 'black');
-            arcPath.setAttribute('stroke-width', stroke ?? lineStrokeWidth);
-            arcPath.setAttribute('fill', 'none');
-            arcPath.setAttribute('id', `arc-${lineCounter++}`);
-            arcPath.classList.add('reveal');
-            return arcPath;
-        }
-
-        // Function to update the end point of a line
-        function updateLineEndPoint(line, x, y) {
-            line.setAttribute('x2', x);
-            line.setAttribute('y2', y);
-        }
-
-        function getCoordinatesFromPath(d, atStart = true) {
-            // Regular expression to match commands and their parameters
-            const commandRegex = /([a-zA-Z])([^a-zA-Z]*)/g;
-            let match;
-            let commands = [];
-
-            // Parse the path data into commands and parameters
-            while ((match = commandRegex.exec(d)) !== null) {
-                let command = match[1];
-                let params = match[2].trim().split(/[\s,]+/).map(Number);
-                commands.push({ command, params });
-            }
-
-            // Initialize start and current coordinates
-            let startX, startY, currentX, currentY;
-            startX = startY = currentX = currentY = 0;
-
-            // Track coordinates while processing commands
-            for (let i = 0; i < commands.length; i++) {
-                let { command, params } = commands[i];
-                switch (command) {
-                    case 'M':
-                        currentX = params[0];
-                        currentY = params[1];
-                        if (i === 0) { // Record start coordinates on first move command
-                            startX = currentX;
-                            startY = currentY;
-                        }
-                        break;
-                    case 'L':
-                        currentX = params[0];
-                        currentY = params[1];
-                        break;
-                    case 'H':
-                        currentX = params[0];
-                        break;
-                    case 'V':
-                        currentY = params[0];
-                        break;
-                    case 'Z':
-                        // Close path, move current to start
-                        currentX = startX;
-                        currentY = startY;
-                        break;
-                    // Add additional cases for other commands (C, Q, T, etc.) if needed
-                }
-            }
-
-            return atStart ? { x: startX, y: startY } : { x: currentX, y: currentY };
-        }
-
-        svgOverlay.addEventListener('click', function (event) {
-        if (interactionMode === 'draw') return;
-
-        const target = event.target;
-        const isPath = target.tagName === 'path';
-
-        removeActiveSelectedElementStyling();
-        if (isPath) {
-            target.classList.add('active-selection');
-            activatePathHandles(target);
-            showPropertyPanel(target);
-        } else {
-            deactivateAllDrawnElements();
-        }
-    });
-
-    document.getElementById('svg-upload').addEventListener('change', function (event) {
-        const file = event.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                loadSVG(e.target.result);
-            };
-            reader.readAsText(file);
-        }
-    });
-
-        // Function to create a handle for the control point of the arc
-        function createHandleForControlPoint(arcPath) {
-            const sns = "http://www.w3.org/2000/svg";
-            const d = arcPath.getAttribute('d');
-
-            // Split the path into individual commands
-            const commands = d.match(/[MLHVCSQTAZ][^MLHVCSQTAZ]*/g);
-            if (!commands) {
-                console.error('Unable to parse path:', d);
-                return null;
-            }
-
-            let cx, cy;
-            let lastX = 0, lastY = 0;
-
-            for (let command of commands) {
-                const parts = command.match(/([MLHVCSQTAZ])([-\d\.\s,]+)/);
-                if (!parts) continue;
-
-                const cmd = parts[1];
-                const coords = parts[2].trim().split(/[\s,]+/).map(Number);
-
-                switch (cmd) {
-                    case 'M':
-                    case 'L':
-                        cx = coords[0];
-                        cy = coords[1];
-                        break;
-                    case 'H':
-                        cx = coords[0];
-                        cy = lastY;
-                        break;
-                    case 'V':
-                        cx = lastX;
-                        cy = coords[0];
-                        break;
-                    case 'C':
-                        cx = coords[4];
-                        cy = coords[5];
-                        break;
-                    case 'S':
-                    case 'Q':
-                        cx = coords[2];
-                        cy = coords[3];
-                        break;
-                    case 'T':
-                        cx = coords[0];
-                        cy = coords[1];
-                        break;
-                    case 'A':
-                        cx = coords[5];
-                        cy = coords[6];
-                        break;
-                    case 'Z':
-                        // Do nothing for closepath
-                        break;
-                }
-
-                if (cx !== undefined && cy !== undefined) {
-                    lastX = cx;
-                    lastY = cy;
-                }
-            }
-
-            if (cx === undefined || cy === undefined) {
-                console.error('Unable to determine final coordinates for path:', d);
-                return null;
-            }
-
-            const connectingLine = document.createElementNS(sns, 'line');
-            connectingLine.setAttribute('stroke-dasharray', '2, 2');
-            connectingLine.setAttribute('control-line-id', arcPath.getAttribute('id'));
-            connectingLine.classList.add('control-ui-item', 'reveal', 'control-line');
-            svgOverlay.appendChild(connectingLine);
-
-            const handle = document.createElementNS(sns, 'circle');
-            handle.setAttribute('r', handleRadius);
-            handle.setAttribute('fill', handleFill);
-            handle.setAttribute('stroke', handleStroke);
-            handle.setAttribute('cx', cx);
-            handle.setAttribute('cy', cy);
-            handle.classList.add('control-handle', 'reveal', 'control-ui-item');
-            handle.setAttribute('data-line-id', arcPath.getAttribute('id'));
-            handle.setAttribute('data-is-control-handle', 'true');
-
-            svgOverlay.appendChild(handle);
-
-            return { handle, connectingLine };
-        }
-        // Function to update the arc path based on the start, end, and control point coordinates
-        function updateArcPath(arcPath, startX, startY, endX, endY, controlX, controlY) {
-            const d = `M ${startX},${startY} Q ${controlX},${controlY} ${endX},${endY}`;
-            arcPath.setAttribute('d', d);
-        }
-
-        function convertLineToArc(line) {
-            const startX = parseFloat(line.getAttribute('x1'));
-            const startY = parseFloat(line.getAttribute('y1'));
-            const endX = parseFloat(line.getAttribute('x2'));
-            const endY = parseFloat(line.getAttribute('y2'));
-
-            const arcPath = document.createElementNS(sns, 'path');
-            const controlX = (startX + endX) / 2;
-            const controlY = (startY + endY) / 2;
-            updateArcPath(arcPath, startX, startY, endX, endY, controlX, controlY);
-            arcPath.setAttribute('stroke', line.getAttribute('stroke'));
-            arcPath.setAttribute('stroke-width', line.getAttribute('stroke-width'));
-            arcPath.setAttribute('fill', 'none');
-            arcPath.setAttribute('id', `arc-${lineCounter++}`);
-            arcPath.classList.add('reveal');
-
-            // Replace the line with the arc in the SVG
-            svgOverlay.removeChild(line);
-            svgOverlay.appendChild(arcPath);
-
-            // Update the linesAndHandles array
-            const lineIndex = linesAndHandles.findIndex(item => item.line === line);
-            if (lineIndex !== -1) {
-                const { handles } = linesAndHandles[lineIndex];
-                const startHandle = handles.find(handle => handle.getAttribute('data-is-start-handle') === 'true');
-                const endHandle = handles.find(handle => handle.getAttribute('data-is-start-handle') === 'false');
-                const controlHandle = createHandleForControlPoint(arcPath);
-                linesAndHandles[lineIndex] = { line: arcPath, handles: [startHandle, endHandle, controlHandle] };
-
-                // Update event listeners for the control handle
-                interact(controlHandle).draggable({
-                    enabled: true,
-                    modifiers: [
-                        interact.modifiers.restrict({
-                            restriction: 'parent',
-                            endOnly: true
-                        })
-                    ],
-                    listeners: {
-                        move: handleControlPointDrag
-                    }
-                });
-            }
-        }
-        
-        function convertArcToLine(arcPath) {
-            const startX = parseFloat(arcPath.getAttribute('x1'));
-            const startY = parseFloat(arcPath.getAttribute('y1'));
-            const endX = parseFloat(arcPath.getAttribute('x2'));
-            const endY = parseFloat(arcPath.getAttribute('y2'));
-
-            const line = document.createElementNS(sns, 'line');
-            line.setAttribute('x1', startX);
-            line.setAttribute('y1', startY);
-            line.setAttribute('x2', endX);
-            line.setAttribute('y2', endY);
-            line.setAttribute('stroke', arcPath.getAttribute('stroke'));
-            line.setAttribute('stroke-width', arcPath.getAttribute('stroke-width'));
-            line.setAttribute('id', `line-${lineCounter++}`);
-            line.classList.add('reveal');
-
-            // Replace the arc with the line in the SVG
-            svgOverlay.removeChild(arcPath);
-            svgOverlay.appendChild(line);
-
-            // Update the linesAndHandles array
-            const arcIndex = linesAndHandles.findIndex(item => item.line === arcPath);
-            if (arcIndex !== -1) {
-                const { handles } = linesAndHandles[arcIndex];
-                const startHandle = handles.find(handle => handle.getAttribute('data-is-start-handle') === 'true');
-                const endHandle = handles.find(handle => handle.getAttribute('data-is-start-handle') === 'false');
-                linesAndHandles[arcIndex] = { line, handles: [startHandle, endHandle] };
-            }
-        }
-
-        function handleControlPointDrag(event) {
-            const handle = event.target;
-            const lineId = handle.getAttribute('data-line-id');
-            const isControlHandle = handle.getAttribute('data-is-control-handle') === 'true';
-
-            // Update the handle's position
-            let cx = parseFloat(handle.getAttribute('cx')) + event.dx / scaleFactor;
-            let cy = parseFloat(handle.getAttribute('cy')) + event.dy / scaleFactor;
-            handle.setAttribute('cx', cx);
-            handle.setAttribute('cy', cy);
-
-            // Find the associated arc and update its path
-            const arc = svgOverlay.querySelector(`#${lineId}`);
-            if (arc) {
-                const d = arc.getAttribute('d');
-                const coords = d.match(/M\s*([\d\.]+)\s*,\s*([\d\.]+)\s*Q\s*([\d\.]+)\s*,\s*([\d\.]+)\s*([\d\.]+)\s*,\s*([\d\.]+)/);
-
-                if (coords) {
-                    const startX = parseFloat(coords[1]);
-                    const startY = parseFloat(coords[2]);
-                    const endX = parseFloat(coords[5]);
-                    const endY = parseFloat(coords[6]);
-
-                    if (isControlHandle) {
-                        updateArcPath(arc, startX, startY, endX, endY, cx, cy);
-                    }
-                }
-            }
-        }
-
-        document.getElementById('applyStyles').addEventListener('click', function () {
-            // Assume active elements are marked with an 'active' class
-            const activeLines = document.querySelectorAll('line.reveal');
-            const activeHandles = document.querySelectorAll('circle.reveal');
-
-            // Retrieve current styles from inputs
-            const handleRadius = document.getElementById('handle-radius').value;
-            const handleFill = document.getElementById('handle-fill').value;
-            const handleStroke = document.getElementById('handle-stroke').value;
-            const handleStrokeWidth = document.getElementById('handle-stroke-width').value;
-            const lineStrokeWidth = document.getElementById('line-stroke-width').value;
-            const isArcMode = document.getElementById('arc-mode-toggle').checked;
-
-            // Apply styles to active lines
-            activeLines.forEach(line => {
-                line.style.strokeWidth = `${lineStrokeWidth}px`;
-                if (isArcMode && line.tagName === 'line') {
-                    convertLineToArc(line);
-                } else if (!isArcMode && line.tagName === 'path') {
-                    convertArcToLine(line);
-                }
-            });
-
-            // Apply styles to active handles
-            activeHandles.forEach(handle => {
-                handle.setAttribute('r', handleRadius);
-                handle.setAttribute('fill', handleFill);
-                handle.setAttribute('stroke', handleStroke);
-                handle.setAttribute('stroke-width', handleStrokeWidth);
-            });
-
-        });
-
-        // Line joining logic
-
-        let proximityThreshold = 10; // Adjust the proximity threshold as needed
-        let targetPoint = null;
-        let draggedElement = null;
-        let draggedHandle = null;
-
-        function handleKeydown(event) {
-            if (event.shiftKey && targetPoint && draggedElement && draggedHandle) {
-                console.log('Shift pressed while in proximity of:', targetPoint);
-
-                const targetLineId = targetPoint.getAttribute('data-line-id');
-                const targetLine = svgOverlay.querySelector(`#${targetLineId}`);
-                const isTargetStartHandle = targetPoint.getAttribute('data-is-start-handle') === 'true';
-
-                const isDraggedStartHandle = draggedHandle.getAttribute('data-is-start-handle') === 'true';
-
-                const targetOppositeHandle = isTargetStartHandle ? getEndHandle(targetLine) : getStartHandle(targetLine);
-                const draggedOppositeHandle = isDraggedStartHandle ? getEndHandle(draggedElement) : getStartHandle(draggedElement);
-
-                const startX = parseFloat(targetOppositeHandle.getAttribute('cx'));
-                const startY = parseFloat(targetOppositeHandle.getAttribute('cy'));
-                const midX = parseFloat(targetPoint.getAttribute('cx'));
-                const midY = parseFloat(targetPoint.getAttribute('cy'));
-                const endX = parseFloat(draggedOppositeHandle.getAttribute('cx'));
-                const endY = parseFloat(draggedOppositeHandle.getAttribute('cy'));
-
-                // Remove the existing lines and their handles
-
-                if (event.code === 'KeyA') {
-                    removeLine(targetLine);
-                    removeLine(draggedElement);
-                    // Create a new arc
-                    const arcPath = createArcPath(startX, startY);
-                    updateArcPath(arcPath, startX, startY, endX, endY, midX, midY);
-                    svgOverlay.appendChild(arcPath);
-
-                    // Create handles for the start, end, and control points of the arc
-                    const startHandle = createHandleForLine(arcPath, true);
-                    const endHandle = createHandleForLine(arcPath, false);
-                    const { handle: controlHandle, connectingLine } = createHandleForControlPoint(arcPath);
-
-                    const obj = { line: arcPath, handles: [startHandle, endHandle, controlHandle], connectingLine };
-                    linesAndHandles.push(obj);
-
-                    // Assign drag interactions to the arc and handles
-                    assignArcDragInteraction(arcPath);
-                    obj.handles.forEach(handle => assignHandleDragInteraction(handle));
-                } else if (event.code === 'KeyL') {
-                    removeLine(targetLine);
-                    removeLine(draggedElement);
-                    // Create two lines connected at the middle point
-                    const line1 = createLine(startX, startY, midX, midY);
-                    const line2 = createLine(midX, midY, endX, endY);
-                    svgOverlay.appendChild(line1);
-                    svgOverlay.appendChild(line2);
-
-                    // Create handles for the start, middle, and end points
-                    const startHandle = createHandleForLine(line1, true);
-                    const midHandle = createHandleForLine(line1, false);
-                    midHandle.setAttribute('data-shared-handle-for', line2.getAttribute('id'));
-                    const endHandle = createHandleForLine(line2, false);
-
-                    const obj1 = { line: line1, handles: [startHandle, midHandle] };
-                    const obj2 = { line: line2, handles: [midHandle, endHandle] };
-                    linesAndHandles.push(obj1, obj2);
-
-                    // Assign drag interactions to the lines and handles
-                    assignLineDragInteraction(line1);
-                    assignLineDragInteraction(line2);
-                    obj1.handles.forEach(handle => assignHandleDragInteraction(handle));
-                    obj2.handles.forEach(handle => assignHandleDragInteraction(handle));
-                }
-            }
-
-        }
-
-        function getStartHandle(line) {
-            return document.querySelector(`[data-line-id="${line.id}"][data-is-start-handle="true"]`);
-        }
-
-        function getEndHandle(line) {
-            return document.querySelector(`[data-line-id="${line.id}"][data-is-start-handle="false"]`);
-        }
-
-        function removeLine(line) {
-            const lineId = line.getAttribute('id');
-            const { handles, connectingLine } = linesAndHandles.find(item => item.line.id === lineId);
-
-            // Remove the line and its handles from the SVG
-            svgOverlay.removeChild(line);
-            handles.forEach(handle => svgOverlay.removeChild(handle));
-            if (connectingLine) {
-                svgOverlay.removeChild(connectingLine);
-            }
-
-            // Remove the line from the linesAndHandles array
-            const index = linesAndHandles.findIndex(item => item.line.id === lineId);
-            if (index !== -1) {
-                linesAndHandles.splice(index, 1);
-            }
+        // Render PDF page
+        async function renderPage(pageNumber) {
+            const page = await currentPdf.getPage(pageNumber);
+            const viewport = page.getViewport({ scale: 1 });
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+
+            await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+            scaleSVGToCanvas();
+            zoomToFit();
         }
 
 
-        document.addEventListener('keydown', handleKeydown);
-
-        function updateSvgOverlaySize(width, height) {
-            svgOverlay.setAttribute('width', canvas.width);
-            svgOverlay.setAttribute('height', canvas.height);
-            svgOverlay.style.position = 'absolute';
-            svgOverlay.style.top = '0';
-            svgOverlay.style.left = '0';
-        }
-
-        // Call this function after loading a new PDF or image, and on window resize
-        updateSvgOverlaySize();
-
-        window.addEventListener('resize', updateSvgOverlaySize);
-
-        function loadSVG(svgString) {
-            const parser = new DOMParser();
-            const widthMatch = svgString.match(/width=["'](\d+)/);
-            const heightMatch = svgString.match(/height=["'](\d+)/);
-
-            if (widthMatch && heightMatch) {
-                const originalWidth = parseInt(widthMatch[1], 10);
-                const originalHeight = parseInt(heightMatch[1], 10);
-                svgOverlay.setAttribute('viewBox', `0 0 ${originalWidth} ${originalHeight}`);
-                svgOverlay.setAttribute('width', canvas.width);
-                svgOverlay.setAttribute('height', canvas.height);
-
-                const scaleX = canvas.width / originalWidth;
-                const scaleY = canvas.height / originalHeight;
-
-
-
-                const svgDoc = parser.parseFromString(svgString, "image/svg+xml");
-                const svgElement = svgDoc.documentElement;
-
-
-                const scaleFactor = Math.min(scaleX, scaleY);
-
-                const paths = svgDoc.querySelectorAll('path');
-
-                paths.forEach(path => {
-
-                    let strokeWidth = path.getAttribute('stroke-width');
-                    if (strokeWidth) strokeWidth = parseFloat(strokeWidth);
-
-                    svgOverlay.appendChild(path);
-                    // Create handles for the start, end, and control points of the arc
-                    const startHandle = createHandleForLine(path, true);
-                    const endHandle = createHandleForLine(path, false);
-
-                    const { handle: controlHandle, connectingLine } = createHandleForControlPoint(path);
-
-                    const obj = { line: path, handles: [startHandle, endHandle, controlHandle], connectingLine }
-
-
-                    // Track the arc and its handles
-                    linesAndHandles.push(obj);
-
-                    assignArcDragInteraction(path);
-
-                  
-                });
-            }
-
-        }
-
-        // Add event listeners for loading SVG files
-        document.getElementById('svg-upload').addEventListener('change', function (event) {
+        // Load SVG
+        function loadSVG(event) {
             const file = event.target.files[0];
             if (file) {
                 const reader = new FileReader();
-                reader.onload = function (e) {
-                    loadSVG(e.target.result);
+                reader.onload = (e) => {
+                    const svgString = e.target.result;
+                    const parser = new DOMParser();
+                    const svgDoc = parser.parseFromString(svgString, 'image/svg+xml');
+                    const svgElement = svgDoc.documentElement;
+
+                    // Clear existing content
+                    while (svgOverlay.firstChild) {
+                        svgOverlay.removeChild(svgOverlay.firstChild);
+                    }
+
+                    // Copy all child nodes from the loaded SVG to our SVG overlay
+                    Array.from(svgElement.childNodes).forEach(node => {
+                        svgOverlay.appendChild(node.cloneNode(true));
+                    });
+
+                    // Set initial viewBox based on the canvas size
+                    svgOverlay.setAttribute('viewBox', `0 0 ${canvas.width} ${canvas.height}`);
+
+                    scaleSVGToCanvas();
+                    initializePaths();
                 };
                 reader.readAsText(file);
             }
-        });
+        }
+        // Scale SVG to match canvas size
+        function scaleSVGToCanvas() {
+            // Use the original canvas dimensions, not the scaled ones
+            const width = canvas.width;
+            const height = canvas.height;
 
-        function generateHandlesForPath(path) {
-        const d = path.getAttribute('d');
-        const commands = d.match(/[MLHVCSQTAZmlhvcsqtaz][^MLHVCSQTAZmlhvcsqtaz]*/g);
-        const handles = [];
+            // Set the SVG overlay size to match the original canvas size
+            svgOverlay.style.width = `${width}px`;
+            svgOverlay.style.height = `${height}px`;
 
-        commands.forEach((cmd, index) => {
-            const type = cmd[0].toUpperCase();
-            const coords = cmd.slice(1).trim().split(/[\s,]+/).map(parseFloat);
+            // Update the viewBox to match the canvas dimensions
+            svgOverlay.setAttribute('viewBox', `0 0 ${width} ${height}`);
+            svgOverlay.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
-            switch (type) {
-                case 'M':
-                case 'L':
-                    handles.push(createHandle(coords[0], coords[1], 'point', index));
-                    break;
-                case 'C':
-                    handles.push(createHandle(coords[0], coords[1], 'control first-control', index));
-                    handles.push(createHandle(coords[2], coords[3], 'control second-control', index));
-                    if (index === commands.length - 1) {
-                        handles.push(createHandle(coords[4], coords[5], 'point', index));
-                    }
-                    break;
-                case 'Q':
-                    handles.push(createHandle(coords[0], coords[1], 'control', index));
-                    if (index === commands.length - 1) {
-                        handles.push(createHandle(coords[2], coords[3], 'point', index));
-                    }
-                    break;
-                // Add cases for other command types as needed
-            }
-        });
+            // Position the SVG overlay absolutely to match the canvas position
+            svgOverlay.style.position = 'absolute';
+            svgOverlay.style.top = '0';
+            svgOverlay.style.left = '0';
 
-        return handles;
-    }
-
-    function createHandle(x, y, type, index) {
-        const handle = document.createElementNS(sns, 'circle');
-        handle.setAttribute('cx', x);
-        handle.setAttribute('cy', y);
-        handle.setAttribute('r', handleRadius);
-        handle.setAttribute('fill', handleFill);
-        handle.setAttribute('stroke', handleStroke);
-        handle.setAttribute('stroke-width', handleStrokeWidth);
-        handle.classList.add('handle', ...type.split(' '));
-        handle.dataset.index = index;
-        return handle;
-    }
-
-    function activatePathHandles(path) {
-        // Remove any existing handles
-        svgOverlay.querySelectorAll('.handle').forEach(handle => handle.remove());
-
-        const handles = generateHandlesForPath(path);
-        handles.forEach(handle => {
-            svgOverlay.appendChild(handle);
-            makeHandleDraggable(handle, path);
-        });
-    }
-
-    function updatePathOnHandleDrag(path, handle, dx, dy) {
-        const d = path.getAttribute('d');
-        const commands = d.match(/[MLHVCSQTAZmlhvcsqtaz][^MLHVCSQTAZmlhvcsqtaz]*/g);
-        const index = parseInt(handle.dataset.index);
-        const type = handle.classList.contains('control') ? 'control' : 'point';
-
-        let updatedCommand = commands[index];
-        const coords = updatedCommand.slice(1).trim().split(/[\s,]+/).map(parseFloat);
-
-        if (type === 'point') {
-            coords[0] += dx;
-            coords[1] += dy;
-        } else if (type === 'control') {
-            const controlIndex = handle.classList.contains('first-control') ? 0 : 2;
-            coords[controlIndex] += dx;
-            coords[controlIndex + 1] += dy;
+            // // Apply the current scale to the SVG overlay
+            // svgOverlay.style.transform = `scale(${currentScale})`;
+            // svgOverlay.style.transformOrigin = '0 0';
         }
 
-        updatedCommand = updatedCommand[0] + coords.join(' ');
-        commands[index] = updatedCommand;
+        // Initialize paths
+        function initializePaths() {
+            const paths = svgOverlay.querySelectorAll('path');
+            paths.forEach(path => {
+                path.style.pointerEvents = 'all';
+                path.addEventListener('click', (e) => {
+                    if (currentMode === 'select') {
+                        selectPath(path);
+                    }
+                });
+            });
+        }
 
-        path.setAttribute('d', commands.join(' '));
-    }
+        // Set interaction mode
+        function setMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.toolbar button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`mode-${mode}`).classList.add('active');
+            svgOverlay.style.pointerEvents = mode === 'pan' ? 'none' : 'all';
+            if (mode !== 'select') deselectPath();
+        }
 
-    function makeHandleDraggable(handle, path) {
-        interact(handle).draggable({
-            listeners: {
-                move(event) {
-                    const dx = event.dx / scaleFactor;
-                    const dy = event.dy / scaleFactor;
-                    updatePathOnHandleDrag(path, handle, dx, dy);
-                    updateHandlePosition(handle, dx, dy);
+        // Zoom to fit
+        function zoomToFit() {
+            // Add a small delay to ensure the canvas has been rendered
+            setTimeout(() => {
+                const wrapperWidth = interactWrapper.parentElement.offsetWidth;
+                const wrapperHeight = interactWrapper.parentElement.offsetHeight;
+                const canvasAspect = canvas.width / canvas.height;
+                const wrapperAspect = wrapperWidth / wrapperHeight;
+
+                let scale;
+                if (canvasAspect > wrapperAspect) {
+                    // Fit to width
+                    scale = wrapperWidth / canvas.width;
+                } else {
+                    // Fit to height
+                    scale = wrapperHeight / canvas.height;
                 }
+
+                // Apply a maximum zoom level to prevent extreme zooming
+                scale = Math.min(scale, 3);  // Limit zoom to 300%
+
+                // Ensure we're not zooming out too far
+                scale = Math.max(scale, 0.1);  // Minimum 10% zoom
+
+                setZoom(scale);
+
+                // Center the canvas
+                const scaledWidth = canvas.width * scale;
+                const scaledHeight = canvas.height * scale;
+                const leftOffset = (wrapperWidth - scaledWidth) / 2;
+                const topOffset = (wrapperHeight - scaledHeight) / 2;
+
+                interactWrapper.style.left = `${leftOffset}px`;
+                interactWrapper.style.top = `${topOffset}px`;
+            }, 100);  // 100ms delay
+        }
+
+        // Set zoom level
+        function setZoom(scale) {
+            currentScale = scale;
+            interactWrapper.style.transform = `scale(${scale})`;
+            document.getElementById('zoom-level').textContent = `${Math.round(scale * 100)}%`;
+            scaleSVGToCanvas();
+        }
+
+        function handleMouseDown(e) {
+            if (currentMode === 'pan') {
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+            } else if (currentMode === 'draw') {
+                startDrawing(e);
             }
-        });
-    }
+        }
 
-    function updateHandlePosition(handle, dx, dy) {
-        const cx = parseFloat(handle.getAttribute('cx')) + dx;
-        const cy = parseFloat(handle.getAttribute('cy')) + dy;
-        handle.setAttribute('cx', cx);
-        handle.setAttribute('cy', cy);
-    }
+        function handleMouseMove(e) {
+            if (isDragging && currentMode === 'pan') {
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                const currentTransform = new DOMMatrix(window.getComputedStyle(interactWrapper).transform);
+                const newTransform = currentTransform.translate(dx / currentScale, dy / currentScale);
+                interactWrapper.style.transform = newTransform.toString();
+                startX = e.clientX;
+                startY = e.clientY;
+            } else if (currentMode === 'draw') {
+                draw(e);
+            }
+        }
 
+        function handleMouseUp() {
+            isDragging = false;
+            if (currentMode === 'draw') {
+                endDrawing();
+            }
+        }
+
+        // Handle wheel event for zooming
+        function handleWheel(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            const newScale = currentScale * delta;
+            setZoom(newScale);
+        }
+        // Select a path
+        function selectPath(path) {
+            deselectPath();
+            selectedPath = path;
+            path.classList.add('selected');
+            createHandles(path);
+            showPropertyPanel(path);
+            makePathDraggable(path);
+        }
+
+        // Deselect the current path
+        function deselectPath() {
+            if (selectedPath) {
+                selectedPath.classList.remove('selected');
+                removeHandles();
+                hidePropertyPanel();
+                selectedPath = null;
+            }
+        }
+
+        // Make a path draggable
+        function makePathDraggable(path) {
+            interact(path).draggable({
+                listeners: {
+                    move(event) {
+                        const dx = event.dx / currentScale;
+                        const dy = event.dy / currentScale;
+                        updatePathPosition(path, dx, dy);
+                    }
+                }
+            });
+
+
+        }
+
+        function updatePathPosition(path, dx, dy) {
+            // Parse the current path to points
+            let points = parsePathToPoints(path.getAttribute('d'));
+
+            // Update all points
+            points = points.map(point => ({
+                x: point.x + dx,
+                y: point.y + dy
+            }));
+
+            // Convert points back to path string
+            const newD = pointsToPathD(points);
+
+            // Update the path
+            path.setAttribute('d', newD);
+
+            // Update handle positions
+            updateHandlePositions(path, dx, dy);
+        }
+
+        function updateHandlePositions(path, dx, dy) {
+            const handles = document.querySelectorAll(`.handle[data-path-id="${path.id}"]`);
+            handles.forEach(handle => {
+                const x = parseFloat(handle.getAttribute('cx')) + dx;
+                const y = parseFloat(handle.getAttribute('cy')) + dy;
+                handle.setAttribute('cx', x);
+                handle.setAttribute('cy', y);
+            });
+        }
+        // Create handles for the selected path
+        function createHandles(path) {
+            const points = parsePathToPoints(path.getAttribute('d'));
+            points.forEach((point, index) => {
+                createHandle(point.x, point.y, `point-${index}`, path);
+            });
+        }
+
+
+        // Check if a path is curved
+        function isPathCurved(path) {
+            const d = path.getAttribute('d');
+            return d.includes('C') || d.includes('c') || d.includes('S') || d.includes('s') ||
+                d.includes('Q') || d.includes('q') || d.includes('T') || d.includes('t');
+        }
+
+        // Create a handle
+        function createHandle(x, y, type, path) {
+            const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            handle.setAttribute('cx', x);
+            handle.setAttribute('cy', y);
+            handle.setAttribute('r', 5);
+            handle.classList.add('handle', type);
+            handle.dataset.pathId = path.id;
+            handle.dataset.index = type.split('-')[1];  // Store the point index
+            svgOverlay.appendChild(handle);
+            makeHandleDraggable(handle);
+        }
+
+        // Create a control handle
+        function createControlHandle(x, y, path) {
+            const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            handle.setAttribute('cx', x);
+            handle.setAttribute('cy', y);
+            handle.setAttribute('r', 5);
+            handle.classList.add('handle', 'control');
+            handle.dataset.pathId = path.id;
+            svgOverlay.appendChild(handle);
+            makeHandleDraggable(handle);
+
+            // Create the control line
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', path.getPointAtLength(0).x);
+            line.setAttribute('y1', path.getPointAtLength(0).y);
+            line.setAttribute('x2', x);
+            line.setAttribute('y2', y);
+            line.setAttribute('stroke', 'gray');
+            line.setAttribute('stroke-dasharray', '4 4');
+            line.classList.add('control-line');
+            svgOverlay.insertBefore(line, handle);
+        }
+
+        // Remove all handles
+        function removeHandles() {
+            svgOverlay.querySelectorAll('.handle, .control-line').forEach(el => el.remove());
+        }
+        // Make a handle draggable
+        function makeHandleDraggable(handle) {
+            interact(handle).draggable({
+                listeners: {
+                    move(event) {
+                        const x = parseFloat(handle.getAttribute('cx')) + event.dx / currentScale;
+                        const y = parseFloat(handle.getAttribute('cy')) + event.dy / currentScale;
+                        handle.setAttribute('cx', x);
+                        handle.setAttribute('cy', y);
+                        updatePath(handle);
+                    }
+                }
+            });
+        }
+
+        // Function to update the path when a handle is moved
+        function updatePath(handle) {
+            const path = document.getElementById(handle.dataset.pathId);
+            if (!path) return;
+
+            const points = parsePathToPoints(path.getAttribute('d'));
+            const index = parseInt(handle.dataset.index);
+
+            points[index] = {
+                x: parseFloat(handle.getAttribute('cx')),
+                y: parseFloat(handle.getAttribute('cy'))
+            };
+
+            const newD = pointsToPathD(points);
+            path.setAttribute('d', newD);
+        }
+
+        function pointsToPathD(points) {
+            return 'M ' + points.map(p => `${p.x},${p.y}`).join(' L ');
+        }
+
+        function parsePathToPoints(d) {
+            const commands = d.match(/[MLHVCSQTAZmlhvcsqtaz][^MLHVCSQTAZmlhvcsqtaz]*/g) || [];
+            let points = [];
+            let currentX = 0, currentY = 0;
+
+            commands.forEach(command => {
+                const type = command[0];
+                const args = command.slice(1).trim().split(/[\s,]+/).map(parseFloat);
+
+                switch (type.toUpperCase()) {
+                    case 'M':
+                    case 'L':
+                        points.push({ x: args[0], y: args[1] });
+                        currentX = args[0];
+                        currentY = args[1];
+                        break;
+                    case 'H':
+                        points.push({ x: args[0], y: currentY });
+                        currentX = args[0];
+                        break;
+                    case 'V':
+                        points.push({ x: currentX, y: args[0] });
+                        currentY = args[0];
+                        break;
+                    // Add cases for other command types as needed
+                }
+            });
+
+            return points;
+        }
+
+        // Function to parse an SVG path string into an array of command objects
+        function parseSVGPath(d) {
+            const commands = [];
+            // Regular expression to match SVG path commands
+            const commandRegex = /([MLHVCSQTAZ])([^MLHVCSQTAZ]*)/gi;
+            let match;
+            let lastX = 0, lastY = 0;  // Keep track of the last known position
+
+            // Iterate through each command in the path string
+            while ((match = commandRegex.exec(d)) !== null) {
+                const [, type, argsString] = match;
+                // Parse the command arguments into numbers
+                const args = argsString.trim().split(/[ ,]+/).map(parseFloat);
+                // Create a command object, noting if it's a relative command
+                const command = { type: type.toUpperCase(), relative: type !== type.toUpperCase() };
+
+                // Parse the command based on its type
+                switch (type.toUpperCase()) {
+                    case 'M':  // Move to
+                    case 'L':  // Line to
+                        [command.x, command.y] = args;
+                        lastX = command.x;
+                        lastY = command.y;
+                        break;
+                    case 'H':  // Horizontal line to
+                        command.x = args[0];
+                        command.y = lastY;
+                        lastX = command.x;
+                        break;
+                    case 'V':  // Vertical line to
+                        command.x = lastX;
+                        command.y = args[0];
+                        lastY = command.y;
+                        break;
+                    // Additional cases for other command types will go here
+                }
+                commands.push(command);
+            }
+            return commands;
+        }
+
+        // Function to convert an array of command objects back into an SVG path string
+        function stringifySVGPath(commands) {
+            return commands.map(cmd => {
+                // Determine if the command should be uppercase (absolute) or lowercase (relative)
+                const type = cmd.relative ? cmd.type.toLowerCase() : cmd.type.toUpperCase();
+                switch (type.toUpperCase()) {
+                    case 'M':  // Move to
+                    case 'L':  // Line to
+                        return `${type}${cmd.x},${cmd.y}`;
+                    case 'H':  // Horizontal line to
+                        return `${type}${cmd.x}`;
+                    case 'V':  // Vertical line to
+                        return `${type}${cmd.y}`;
+                    // Additional cases for other command types will go here
+                }
+            }).join(' ');  // Join all commands with spaces
+        }
+
+        function fitCurve(points) {
+            if (points.length < 4) return pointsToPathD(points);
+
+            let d = `M${points[0].x},${points[0].y}`;
+
+            for (let i = 1; i < points.length - 2; i += 3) {
+                const p0 = points[i - 1];
+                const p1 = points[i];
+                const p2 = points[i + 1];
+                const p3 = points[i + 2];
+
+                d += ` C${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y}`;
+            }
+
+            return d;
+        }
+
+        function applyCurveFitting(path) {
+            const points = parsePathToPoints(path.getAttribute('d'));
+            const fittedPath = fitCurve(points);
+            path.setAttribute('d', fittedPath);
+
+            // Recreate handles for the new path
+            removeHandles();
+            createHandles(path);
+        }
+
+        // Show property panel
+        function showPropertyPanel(path) {
+            propertyPanel.style.display = 'block';
+            document.getElementById('stroke-width').value = path.getAttribute('stroke-width') || 1;
+            document.getElementById('stroke-width').addEventListener('change', updateStrokeWidth);
+            document.getElementById('delete-path').addEventListener('click', deletePath);
+
+            // Add Fit Curve button
+            const fitCurveButton = document.createElement('button');
+            fitCurveButton.id = 'fit-curve';
+            fitCurveButton.textContent = 'Fit Curve';
+            fitCurveButton.addEventListener('click', () => applyCurveFitting(selectedPath));
+            propertyPanel.appendChild(fitCurveButton);
+        }
+
+        function hidePropertyPanel() {
+            propertyPanel.style.display = 'none';
+            document.getElementById('stroke-width').removeEventListener('change', updateStrokeWidth);
+            document.getElementById('delete-path').removeEventListener('click', deletePath);
+
+            // Remove Fit Curve button
+            const fitCurveButton = document.getElementById('fit-curve');
+            if (fitCurveButton) {
+                fitCurveButton.removeEventListener('click', applyCurveFitting);
+                fitCurveButton.remove();
+            }
+        }
+
+        // Update stroke width
+        function updateStrokeWidth(e) {
+            if (selectedPath) {
+                selectedPath.setAttribute('stroke-width', e.target.value);
+            }
+        }
+
+        // Delete selected path
+        function deletePath() {
+            if (selectedPath) {
+                selectedPath.remove();
+                deselectPath();
+            }
+        }
+
+        // Drawing new paths
+        let isDrawing = false;
+        let newPath = null;
+
+        function startDrawing(e) {
+            if (currentMode !== 'draw') return;
+
+            isDrawing = true;
+            const point = getMousePosition(e);
+            newPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            newPath.setAttribute('d', `M${point.x},${point.y}`);
+            newPath.setAttribute('fill', 'none');
+            newPath.setAttribute('stroke', 'black');
+            newPath.setAttribute('stroke-width', '2');
+            svgOverlay.appendChild(newPath);
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+
+            const point = getMousePosition(e);
+            const d = newPath.getAttribute('d');
+            const newD = `${d} L${point.x},${point.y}`;
+            newPath.setAttribute('d', newD);
+        }
+
+        function endDrawing() {
+            if (!isDrawing) return;
+
+            isDrawing = false;
+            initializePaths();
+            newPath = null;
+        }
+
+        function getMousePosition(e) {
+            const CTM = svgOverlay.getScreenCTM();
+            return {
+                x: (e.clientX - CTM.e) / CTM.a,
+                y: (e.clientY - CTM.f) / CTM.d
+            };
+        }
+
+        // Add these event listeners to the init function
+        svgOverlay.addEventListener('mousedown', startDrawing);
+        svgOverlay.addEventListener('mousemove', draw);
+        svgOverlay.addEventListener('mouseup', endDrawing);
+        // Initialize the application
+        init();
     </script>
 </body>
 
