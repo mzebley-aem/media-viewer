@@ -3,1486 +3,747 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Media Viewer POC</title>
-    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
-
-
+    <title>SVG Path Editor with Fabric.js</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.9.359/pdf.min.js"></script>
     <style>
         :root {
             --bg-color: #fff;
-            --line-color-1: #366;
-            --line-color-2: #a9a9a9;
-            --control-line-width: .75;
-            --control-handle-width: 1;
-            --handle-fill-color: dodgerblue;
-            --handle-stroke-color: dodgerblue;
-            --handle-stroke-color-active: honeydew;
-            --handle-focus-outline-width: .075rem;
-            --handle-focus-outline-color: rgba(51, 217, 178, 1);
-        }
-
-        *,
-        *::before,
-        *::after {
-            -webkit-box-sizing: border-box;
-            -moz-box-sizing: border-box;
-            box-sizing: border-box;
+            --grid-color-1: #366;
+            --grid-color-2: #a9a9a9;
         }
 
         body,
         html {
             margin: 0;
             padding: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        .toolbar {
+            padding: 10px;
+            background: #f0f0f0;
+            border-bottom: 1px solid #ccc;
         }
 
         .media-wrapper {
             width: 100vw;
-            height: calc(100dvh - 4rem);
-            background-color: var(--bg-color);
-            background-image: linear-gradient(var(--line-color-1) 1.5px, transparent 1.5px), linear-gradient(90deg, var(--line-color-1) 1.5px, transparent 1.5px), linear-gradient(var(--line-color-2) 1px, transparent 1px), linear-gradient(90deg, var(--line-color-2) 1px, transparent 1px);
-            background-position: -1.5px -1.5px, -1.5px -1.5px, -1px -1px, -1px -1px;
-            background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+            height: calc(100vh - 50px);
             position: relative;
             overflow: hidden;
+            background-color: var(--bg-color);
+            background-image:
+                linear-gradient(var(--grid-color-1) 1.5px, transparent 1.5px),
+                linear-gradient(90deg, var(--grid-color-1) 1.5px, transparent 1.5px),
+                linear-gradient(var(--grid-color-2) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid-color-2) 1px, transparent 1px);
+            background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+            background-position: -1.5px -1.5px, -1.5px -1.5px, -1px -1px, -1px -1px;
         }
 
-        .interact-wrapper {
-            transition: all .325s cubic-bezier(.3, .7, .4, 1);
-            will-change: transform;
-            transform: translate(0px, 0px);
-            z-index: 1;
-            position: relative;
-            display: flex;
-        }
-
-        .interact-wrapper>svg {
-            position: absolute;
-            top: 0;
-            left: 0;
+        #canvas-container {
             width: 100%;
             height: 100%;
         }
 
-        #the-canvas {
-            background-color: #fff;
-            width: 100%;
-            max-width: none;
-            user-select: none;
-            pointer-events: none;
-            border: .125rem solid #ccc;
-        }
-
-        .toolbar {
-            width: 100vw;
-            height: 2rem;
-            padding: .25rem;
-            background: #eaeaea;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border-bottom: .125rem solid #ccc;
-        }
-
-        .toolbar>div {
-            display: flex;
-            align-items: center;
-            gap: .25rem;
-        }
-
-
-        .samples {
-            width: 100vw;
-            height: 2rem;
-            padding: .25rem;
-            background: white;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            border-bottom: .125rem solid #ccc;
-        }
-
-        .samples {
-            color: blue;
-            cursor: pointer;
-            text-decoration: underline;
-        }
-
-        .cursor-pan {
-            cursor: grab;
-        }
-
-        .cursor-zoom-in {
-            cursor: zoom-in;
-        }
-
-        .cursor-drag-to-zoom {
-            cursor: crosshair;
-        }
-
-        .cursor-draw-line {
-            cursor: crosshair;
-        }
-
-        .draw-pane {
+        #property-panel {
             position: fixed;
-            bottom: 0;
-            right: 0;
-            background: grey;
-            padding: 1rem;
-            display: flex;
-            flex-direction: column;
-            z-index: 99;
-        }
-
-        .control-handle,
-        .drag-handle {
-            stroke-width: var(--control-handle-width);
-            stroke: var(--handle-stroke-color);
-            fill: var(--handle-fill-color);
-            outline-width: var(--handle-focus-outline-width);
-            outline-style: solid;
-            outline-color: transparent;
-            border-radius: 50%;
-        }
-
-        .control-handle.active-selection,
-        .drag-handle.active-selection {
-            stroke: var(--handle-stroke-color-active);
-            outline-color: var(--handle-focus-outline-color);
-        }
-
-        .control-line {
-            stroke: #aaa;
-            stroke-width: var(--control-line-width);
-            pointer-events: none;
-        }
-
-        .control-ui-item {
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
             display: none;
-            opacity: 0;
-            transition: opacity .225s ease;
-        }
-
-        .reveal {
-            display: block;
-            opacity: 1;
-        }
-
-        .drop-target-active {
-            outline-style: dotted;
-            outline-color: var(--handle-focus-outline-color);
-            stroke: var(--handle-stroke-color-active);
-            fill: var(--handle-stroke-color-active);
         }
     </style>
 </head>
 
 <body>
     <div class="toolbar">
-        <div>
-            <button id="mode-pan">Pan</button>
-            <button id="mode-draw-line">Draw Line</button>
-            <button id="zoom-click" style="margin-right:1rem">Click to Zoom</button>
-            <button id="zoom-fit">Zoom to fit</button>
-            <button id="zoom-in">Zoom In</button>
-            <button id="zoom-out">Zoom Out</button>
-            <select id="zoom-level">
-                <option value="2">200%</option>
-                <option value="1" selected>100%</option>
-                <option value="0.75">75%</option>
-                <option value="0.5">50%</option>
-            </select>
-            <p>Current zoom: <span id="current-zoom-level"></span></p>
-        </div>
-        <div>
-            <input type="file" id="pdf-upload" accept="application/pdf,image/*">
-            <select id="page-selector"></select>
+        <button id="load-pdf">Load PDF</button>
+        <button id="load-svg">Load SVG</button>
+        <button id="mode-pan">Pan</button>
+        <button id="mode-select">Select</button>
+        <!-- <button id="mode-draw">Draw</button> -->
+        <button id="mode-draw-line">Draw Line</button>
+        <button id="mode-draw-circle">Draw Circle</button>
+        <button id="mode-draw-rectangle">Draw Rectangle</button>
+        <button id="zoom-fit">Zoom to Fit</button>
+        <span>Zoom: <span id="zoom-level">100%</span></span>
+    </div>
+    <div class="media-wrapper">
+        <div id="canvas-container">
+            <canvas id="fabric-canvas"></canvas>
         </div>
     </div>
-    <div class="samples">
-        <a id="single-pdf-sample">Single page PDF</a>
-        <a id="multi-pdf-sample">Multi-page PDF</a>
-        <a id="base-64-sample">Base64 PDF</a>
-        <a id="image-sample">Random image</a>
-        <span style="margin-right:3rem"></span>
-        <a id="object-1">+ SVG 1</a>
-        <a id="object-2">+ SVG 2</a>
-    </div>
-    <div class="media-wrapper" id="media-wrapper">
-        <div class="interact-wrapper cursor-pan" id="interact-wrapper">
-            <canvas id="the-canvas"></canvas>
-            <svg id="svgOverlay" class="svg-overlay" style="position: absolute; top: 0; left: 0;"></svg>
-        </div>
-        <div id="draw-pane" class="draw-pane">
-            <label>
-                <input type="checkbox" id="arc-mode-toggle"> Arc Mode
-            </label>
-            <label>Handle Radius: <input type="number" id="handle-radius" value="2"></label>
-            <label>Handle Fill: <input type="color" id="handle-fill" value="#ffffff"></label>
-            <label>Handle Stroke: <input type="color" id="handle-stroke" value="#1e90ff"></label>
-            <label>Handle Stroke Width: <input type="number" id="handle-stroke-width" value="1"></label>
-            <label>Line Stroke Width: <input type="number" id="line-stroke-width" value="1"></label>
-            <button id="applyStyles">Apply to Selected</button>
-        </div>
+    <div id="property-panel">
+        <h3>Object Properties</h3>
+        <label>
+            Stroke Width:
+            <input type="number" id="stroke-width" min="1" max="10" step="1" value="1">
+        </label>
+        <button id="delete-object">Delete Object</button>
     </div>
 
+    <input type="file" id="pdf-input" accept=".pdf" style="display: none;">
+    <input type="file" id="svg-input" accept=".svg" style="display: none;">
 
-    <script type="module">
-        import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.269/pdf.min.mjs';
-        let pdfDoc = null;
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.269/pdf.worker.min.mjs';
+    <script>
+        // PDF.js initialization
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.9.359/pdf.worker.min.js';
 
-        const sns = 'http://www.w3.org/2000/svg';
-        let interactionMode = 'pan'; // Default mode
-
-        // Setup page items and canvas
-        // Wrappers and containers
-        const mediaViewer = document.getElementById('media-wrapper');
-        const interactCanvasWrapper = document.getElementById('interact-wrapper');
-        const canvas = document.getElementById('the-canvas');
-        const ctx = canvas.getContext('2d');
-        const svgOverlay = document.getElementById('svgOverlay');
-
-        // Buttons and dropdowns
-        // Zoom buttons
-        const zoomInBtn = document.getElementById('zoom-in');
-        const zoomOutBtn = document.getElementById('zoom-out');
-        const zoomLevelSelector = document.getElementById('zoom-level');
-        const zoomFitBtn = document.getElementById('zoom-fit');
-        const zoomClickBtn = document.getElementById('zoom-click');
-
-        // Sample item buttons
-        const pdfUploadBtn = document.getElementById('pdf-upload');
-        const singlePagePdfBtn = document.getElementById('single-pdf-sample');
-        const multiPagePdfBtn = document.getElementById('multi-pdf-sample');
-        const base64Btn = document.getElementById('base-64-sample');
-        const imageBtn = document.getElementById('image-sample');
-
-        // Interaction mode buttons
-        const panBtn = document.getElementById('mode-pan');
-        const drawBtn = document.getElementById('mode-draw-line');
-        const pageSelector = document.getElementById('page-selector');
-
-
-
-        // Zoom logic
-        const currentZoomLevelDisplay = document.getElementById('current-zoom-level');
-
-        const zoomSensitivity = 0.5;
-        let scaleFactor = 1;
-        const zoomStep = 0.1;
-
-        const updateZoomDisplay = () => {
-            currentZoomLevelDisplay.textContent = `${getCurrentZoomLevel()}%`;
-        }
-
-        const getCurrentZoomLevel = () => {
-            return Math.round(scaleFactor * 100);
-        }
-
-        const zoomIn = () => {
-            updateScaleFactor(zoomStep, 'plus');
-            updateCanvasTransform();
-            updateZoomDisplay();
-        }
-
-        function zoomOut() {
-            updateScaleFactor(zoomStep, 'minus');
-            updateCanvasTransform();
-            updateZoomDisplay();
-        }
-
-        function setZoomLevel(level) {
-            updateScaleFactor(level, 'equals');
-            updateCanvasTransform();
-            updateZoomDisplay();
-        }
-
-        function zoomToFit() {
-            const fitCanvas = ((Math.round((mediaViewer.offsetWidth / canvas.width) * 100)) / 100);
-            updateScaleFactor(fitCanvas, 'equals');
-            canvasTranslateX = 0;
-            canvasTranslateY = 0;
-            updateCanvasTransform();
-            updateZoomDisplay();
-        }
-
-        function clickZoom(event) {
-            const rect = canvas.getBoundingClientRect();
-            const clickX = event.clientX - rect.left;
-            const clickY = event.clientY - rect.top;
-
-            // Calculate distance from the center of the canvas
-            const distanceX = clickX - canvas.width / 2;
-            const distanceY = clickY - canvas.height / 2;
-
-            // Adjust translation based on distance and current scale
-            canvasTranslateX -= (distanceX / scaleFactor) * zoomSensitivity;
-            canvasTranslateY -= (distanceY / scaleFactor) * zoomSensitivity;
-
-            // Update scale
-            updateScaleFactor(1.2, 'times');
-
-            updateCanvasTransform();
-        }
-
-        function updateScaleFactor(level, type) {
-            if (type === 'equals') {
-                scaleFactor = level;
-            } else if (type === 'times') {
-                scaleFactor *= level;
-            } else if (type === 'plus') {
-                scaleFactor += level;
-            } else if (type === 'minus') {
-                scaleFactor -= level;
-            }
-
-            // document.documentElement.style.setProperty('--control-line-width', (scaleFactor * 2) / 10);
-        }
-
-
-        // Toolbar button event listeners
-        // Zoom buttons
-        zoomInBtn.addEventListener('click', zoomIn);
-        zoomOutBtn.addEventListener('click', zoomOut);
-        zoomClickBtn.addEventListener('click', function (event) {
-            interactionMode = 'zoom';
-            interactCanvasWrapper.className = 'interact-wrapper cursor-zoom-in';
-            interactCanvasObj.options.drag.enabled = false;
-        });
-        zoomLevelSelector.addEventListener('blur', function (event) {
-            const selectedZoomLevel = parseFloat(this.value);
-            const currentZoomLevel = getCurrentZoomLevel();
-
-            // Only update if the current zoom level differs from the selected one
-            if (currentZoomLevel !== selectedZoomLevel) {
-                setZoomLevel(selectedZoomLevel);
-            }
-        });
-        zoomFitBtn.addEventListener('click', zoomToFit);
-
-        // Interaction mode buttons
-        panBtn.addEventListener('click', () => {
-            interactionMode = 'pan';
-            interactCanvasWrapper.className = 'interact-wrapper cursor-pan';
-            interactCanvasObj.options.drag.enabled = true;
-        });
-        drawBtn.addEventListener('click', () => {
-            interactionMode = 'draw';
-            interactCanvasWrapper.className = 'interact-wrapper cursor-draw-line';
-            interactCanvasObj.options.drag.enabled = false;
-        });
-        pageSelector.addEventListener('change', (e) => {
-            displayPage(parseInt(e.target.value));
+        // Initialize Fabric canvas
+        const canvas = new fabric.Canvas('fabric-canvas', {
+            width: window.innerWidth,
+            height: window.innerHeight - 50,
+            backgroundColor: 'rgba(0,0,0,0)'
         });
 
-        // Sample item buttons
-        singlePagePdfBtn.addEventListener('click', () => {
-            loadPDFFromURL('./sample.pdf');
-        });
-        multiPagePdfBtn.addEventListener('click', () => {
-            loadPDFFromURL('./multipage.pdf');
-        });
-        base64Btn.addEventListener('click', () => {
-            let data = atob(
-                'JVBERi0xLjcKCjEgMCBvYmogICUgZW50cnkgcG9pbnQKPDwKICAvVHlwZSAvQ2F0YWxvZwog' +
-                'IC9QYWdlcyAyIDAgUgo+PgplbmRvYmoKCjIgMCBvYmoKPDwKICAvVHlwZSAvUGFnZXMKICAv' +
-                'TWVkaWFCb3ggWyAwIDAgMjAwIDIwMCBdCiAgL0NvdW50IDEKICAvS2lkcyBbIDMgMCBSIF0K' +
-                'Pj4KZW5kb2JqCgozIDAgb2JqCjw8CiAgL1R5cGUgL1BhZ2UKICAvUGFyZW50IDIgMCBSCiAg' +
-                'L1Jlc291cmNlcyA8PAogICAgL0ZvbnQgPDwKICAgICAgL0YxIDQgMCBSIAogICAgPj4KICA+' +
-                'PgogIC9Db250ZW50cyA1IDAgUgo+PgplbmRvYmoKCjQgMCBvYmoKPDwKICAvVHlwZSAvRm9u' +
-                'dAogIC9TdWJ0eXBlIC9UeXBlMQogIC9CYXNlRm9udCAvVGltZXMtUm9tYW4KPj4KZW5kb2Jq' +
-                'Cgo1IDAgb2JqICAlIHBhZ2UgY29udGVudAo8PAogIC9MZW5ndGggNDQKPj4Kc3RyZWFtCkJU' +
-                'CjcwIDUwIFRECi9GMSAxMiBUZgooSGVsbG8sIHdvcmxkISkgVGoKRVQKZW5kc3RyZWFtCmVu' +
-                'ZG9iagoKeHJlZgowIDYKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDEwIDAwMDAwIG4g' +
-                'CjAwMDAwMDAwNzkgMDAwMDAgbiAKMDAwMDAwMDE3MyAwMDAwMCBuIAowMDAwMDAwMzAxIDAw' +
-                'MDAwIG4gCjAwMDAwMDAzODAgMDAwMDAgbiAKdHJhaWxlcgo8PAogIC9TaXplIDYKICAvUm9v' +
-                'dCAxIDAgUgo+PgpzdGFydHhyZWYKNDkyCiUlRU9G');
-            renderBase64(data);
-        });
-        imageBtn.addEventListener('click', loadImageFromURL);
-        pdfUploadBtn.addEventListener('change', (event) => {
+        // Global variables
+        let currentPdf = null;
+        let currentMode = 'select';
+        let isDrawing = false;
+        let startPoint;
+        let tempShape;
+
+        // Initialize
+        function init() {
+            document.getElementById('load-pdf').addEventListener('click', () => document.getElementById('pdf-input').click());
+            document.getElementById('load-svg').addEventListener('click', () => document.getElementById('svg-input').click());
+            document.getElementById('mode-pan').addEventListener('click', () => setMode('pan'));
+            document.getElementById('mode-select').addEventListener('click', () => setMode('select'));
+            // document.getElementById('mode-draw').addEventListener('click', () => setMode('draw'));
+            document.getElementById('zoom-fit').addEventListener('click', zoomToFit);
+            document.getElementById('pdf-input').addEventListener('change', loadPDF);
+            document.getElementById('svg-input').addEventListener('change', loadSVG);
+            document.getElementById('stroke-width').addEventListener('change', updateStrokeWidth);
+            document.getElementById('delete-object').addEventListener('click', deleteSelectedObject);
+            document.getElementById('mode-draw-line').addEventListener('click', () => setMode('draw-line'));
+            document.getElementById('mode-draw-circle').addEventListener('click', () => setMode('draw-circle'));
+            document.getElementById('mode-draw-rectangle').addEventListener('click', () => setMode('draw-rectangle'));
+
+            canvas.on('mouse:down', handleMouseDown);
+            canvas.on('mouse:move', handleMouseMove);
+            canvas.on('mouse:up', handleMouseUp);
+            canvas.on('object:moving', onObjectMoving);
+
+            // Set global object properties
+            fabric.Object.prototype.transparentCorners = false;
+            fabric.Object.prototype.cornerColor = 'blue';
+            fabric.Object.prototype.cornerStyle = 'circle';
+            fabric.Object.prototype.cornerSize = 10;
+            fabric.Object.prototype.padding = 5;
+
+            // Ensure newly added objects are standardized
+            canvas.on('object:added', function (e) {
+                standardizeObject(e.target);
+            });
+
+            // Improve selection behavior
+            canvas.on('selection:created', function (e) {
+                if (e.selected.length > 1) {
+                    e.target.set({
+                        hasControls: true,
+                        hasBorders: true
+                    });
+                }
+            });
+
+            window.addEventListener('resize', resizeCanvas);
+
+            canvas.on('selection:created', showPropertyPanel);
+            canvas.on('selection:cleared', hidePropertyPanel);
+            canvas.on('mouse:down', function (options) {
+                if (editMode && options.target && options.target.type === 'path') {
+                    canvas.setActiveObject(options.target);
+                }
+            });
+
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && editMode) {
+                    const activePath = canvas.getActiveObject();
+                    if (activePath && activePath.type === 'path') {
+                        makePathEditable(activePath);
+                        showPropertyPanel({ selected: [activePath] });
+                    }
+                }
+            });
+
+            canvas.on('object:modified', function (e) {
+                if (e.target.type === 'path' && e.target.edit) {
+                    updatePathPoints(e.target);
+                }
+            });
+        }
+
+        // Load PDF
+        async function loadPDF(event) {
             const file = event.target.files[0];
-            if (!file) return;
-
-            if (file.type === 'application/pdf') {
-                // Handle PDF files as before
-                renderPDF(file);
-            } else if (file.type.startsWith('image/')) {
-                // Handle image files
-                renderImage(file);
-            } else {
-                alert('Please select a PDF or an image file.');
-            }
-        });
-
-
-
-        // Canvas manipulation and interaction
-        let canvasTranslateX = 0;
-        let canvasTranslateY = 0;
-
-        interactCanvasWrapper.addEventListener('click', function (event) {
-            if (interactionMode === 'zoom') {
-                clickZoom(event);
-            }
-        });
-
-        function resetCanvasTransform() {
-            updateScaleFactor(1, 'equals');
-            canvasTranslateX = 0; // Reset translate values to default
-            canvasTranslateY = 0;
-        }
-
-        function dragCanvasListener(event) {
-            if (interactionMode === 'pan') {
-                canvasTranslateX += event.dx;
-                canvasTranslateY += event.dy;
-                updateCanvasTransform();
+            if (file) {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                currentPdf = pdf;
+                renderPage(1);
             }
         }
 
-        function updateCanvasTransform() {
-            interactCanvasWrapper.style.transform = `translate(${canvasTranslateX}px, ${canvasTranslateY}px)`;
-            interactCanvasWrapper.style.width = `${canvas.width * (scaleFactor)}px`;
-            interactCanvasWrapper.style.height = `${canvas.height * (scaleFactor)}px`;
-            interactCanvasObj.reflow({ name: 'drag', axis: 'xy' })
-            updateSvgScale();
-        }
+        // Render PDF page
+        async function renderPage(pageNumber) {
+            const page = await currentPdf.getPage(pageNumber);
+            const viewport = page.getViewport({ scale: 1 });
+            const pdfCanvas = document.createElement('canvas');
+            const context = pdfCanvas.getContext('2d');
+            pdfCanvas.height = viewport.height;
+            pdfCanvas.width = viewport.width;
 
-        // target elements with the "draggable" class
-        const interactCanvasObj = interact('#interact-wrapper')
-            .draggable({
-                // enable inertial throwing
-                inertia: true,
-                styleCursor: false,
-                // keep the element within the area of it's parent
-                modifiers: [
-                    interact.modifiers.restrictRect({
-                        restriction: 'parent',
-                        elementRect: { top: 0.75, left: 0.75, bottom: 0.25, right: 0.25 },
-                        endOnly: true
-                    })
-                ],
-                // disable autoScroll
-                autoScroll: false,
-                cursorChecker() {
-                    // don't set a cursor for drag actions
-                    return null
-                },
-                onstart: function (event) {
-                },
+            await page.render({ canvasContext: context, viewport: viewport }).promise;
 
-                // call this function on every dragmove event
-                onmove: dragCanvasListener,
-                // call this function on every dragend event
-                onend: function (event) {
-                    interactCanvasObj.reflow({ name: 'drag', axis: 'xy' })
-                }
-            });
-
-
-
-
-        // Drawing logic
-
-
-
-        function displayPage(pageNum) {
-            pdfDoc.getPage(pageNum).then(page => {
-                var viewport = page.getViewport({ scale: 1 });
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
-
-                page.render({ canvasContext: ctx, viewport: viewport });
-            });
-        }
-
-
-        function renderPDF(file) {
-            resetCanvasTransform();
-            const fileReader = new FileReader();
-            fileReader.onload = function () {
-                const typedArray = new Uint8Array(this.result);
-                pdfjsLib.getDocument({ data: typedArray }).promise.then(doc => {
-                    pdfDoc = doc;
-                    pageSelector.innerHTML = '';
-
-                    for (let i = 1; i <= pdfDoc.numPages; i++) {
-                        let option = document.createElement('option');
-                        option.textContent = 'Page ' + i;
-                        option.value = i;
-                        pageSelector.appendChild(option);
-                    }
-
-                    displayPage(1);
+            fabric.Image.fromURL(pdfCanvas.toDataURL(), function (img) {
+                canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
+                    scaleX: canvas.width / img.width,
+                    scaleY: canvas.height / img.height
                 });
-            };
-            fileReader.readAsArrayBuffer(file);
-        }
-
-        function renderBase64(pdfData) {
-            resetCanvasTransform();
-            pdfjsLib.getDocument({ data: pdfData }).promise.then(doc => {
-                pdfDoc = doc;
-                pageSelector.innerHTML = '';
-
-                for (let i = 1; i <= pdfDoc.numPages; i++) {
-                    let option = document.createElement('option');
-                    option.textContent = 'Page ' + i;
-                    option.value = i;
-                    pageSelector.appendChild(option);
-                }
-
-                displayPage(1);
+                zoomToFit();
             });
         }
 
-        function renderImage(file) {
-            resetCanvasTransform();
-            const fileReader = new FileReader();
-            fileReader.onload = function () {
-                const img = new Image();
-                img.onload = function () {
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    ctx.drawImage(img, 0, 0, img.width, img.height);
+        function standardizeObject(obj) {
+            obj.set({
+                selectable: true,
+                hasControls: true,
+                hasBorders: true,
+                perPixelTargetFind: true,
+                targetFindTolerance: 4,
+                strokeUniform: true,
+                objectCaching: false
+            });
+
+            if (obj.type === 'path' && !obj.customControlPoints) {
+                addCurvePoints(obj);
+            }
+            
+            if (obj.type === 'path') {
+                obj.strokeLineJoin = 'round';
+                obj.strokeLineCap = 'round';
+
+                // Check if the path is a straight line and add arc control if it is
+                if (obj.path.length === 2 && obj.path[0][0] === 'M' && obj.path[1][0] === 'L') {
+                    addArcControlToLine(obj);
+                }
+            }
+
+            if (obj.type === 'line') {
+                // Convert line to path and add arc control
+                const path = new fabric.Path(`M ${obj.x1} ${obj.y1} L ${obj.x2} ${obj.y2}`, {
+                    stroke: obj.stroke,
+                    strokeWidth: obj.strokeWidth,
+                    selectable: true,
+                    evented: true,
+                    objectCaching: false
+                });
+                canvas.remove(obj);
+                canvas.add(path);
+                addArcControlToLine(path);
+                return path;
+            }
+
+            if (obj.type === 'group') {
+                obj.getObjects().forEach(standardizeObject);
+            }
+
+            return obj;
+        }
+
+        // Load SVG
+        function loadSVG(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    fabric.loadSVGFromString(e.target.result, function (objects, options) {
+                        canvas.clear();
+
+                        objects.forEach(obj => {
+                            canvas.add(standardizeObject(obj));
+                        });
+
+                        canvas.renderAll();
+                        refreshCanvas();
+                        // zoomToFit();
+                    });
                 };
-                img.src = this.result;
+                reader.readAsText(file);
+            }
+        }
+
+        // Set interaction mode
+        function setMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.toolbar button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`mode-${mode}`).classList.add('active');
+
+            canvas.isDrawingMode = false;
+            canvas.selection = mode === 'select';
+
+            canvas.forEachObject(function (object) {
+                object.selectable = mode === 'select';
+                object.evented = mode === 'select';
+            });
+
+            if (mode === 'pan') {
+                canvas.discardActiveObject();
+            }
+
+            canvas.renderAll();
+        }
+
+        function handleMouseDown(o) {
+            if (!currentMode.startsWith('draw-')) return;
+
+            isDrawing = true;
+            startPoint = canvas.getPointer(o.e);
+
+            switch (currentMode) {
+                case 'draw-line':
+                    tempShape = new fabric.Line([startPoint.x, startPoint.y, startPoint.x, startPoint.y], {
+                        stroke: 'black',
+                        strokeWidth: 2,
+                        selectable: false,
+                        evented: false
+                    });
+                    break;
+                case 'draw-circle':
+                    tempShape = new fabric.Circle({
+                        left: startPoint.x,
+                        top: startPoint.y,
+                        radius: 0,
+                        stroke: 'black',
+                        strokeWidth: 2,
+                        fill: 'transparent',
+                        selectable: false,
+                        evented: false
+                    });
+                    break;
+                case 'draw-rectangle':
+                    tempShape = new fabric.Rect({
+                        left: startPoint.x,
+                        top: startPoint.y,
+                        width: 0,
+                        height: 0,
+                        stroke: 'black',
+                        strokeWidth: 2,
+                        fill: 'transparent',
+                        selectable: false,
+                        evented: false
+                    });
+                    break;
+            }
+
+            canvas.add(tempShape);
+            canvas.renderAll();
+        }
+
+        function handleMouseMove(o) {
+            if (!isDrawing) return;
+
+            const pointer = canvas.getPointer(o.e);
+
+            switch (currentMode) {
+                case 'draw-line':
+                    tempShape.set({ x2: pointer.x, y2: pointer.y });
+                    break;
+                case 'draw-circle':
+                    const radius = Math.sqrt(Math.pow(pointer.x - startPoint.x, 2) + Math.pow(pointer.y - startPoint.y, 2)) / 2;
+                    tempShape.set({
+                        left: Math.min(startPoint.x, pointer.x),
+                        top: Math.min(startPoint.y, pointer.y),
+                        radius: radius
+                    });
+                    break;
+                case 'draw-rectangle':
+                    const width = Math.abs(pointer.x - startPoint.x);
+                    const height = Math.abs(pointer.y - startPoint.y);
+                    tempShape.set({
+                        left: Math.min(startPoint.x, pointer.x),
+                        top: Math.min(startPoint.y, pointer.y),
+                        width: width,
+                        height: height
+                    });
+                    break;
+            }
+
+            canvas.renderAll();
+        }
+
+
+
+        function addArcControlToLine(line) {
+            line.controls = fabric.Object.prototype.controls;
+            line.controls.arcControl = new fabric.Control({
+                x: 0,
+                y: -0.5,
+                offsetY: -20,
+                cursorStyle: 'pointer',
+                mouseUpHandler: arcControlMouseUp,
+                render: function (ctx, left, top, styleOverride, fabricObject) {
+                    ctx.save();
+                    ctx.translate(left, top);
+                    ctx.fillStyle = 'blue';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 6, 0, 2 * Math.PI, false);
+                    ctx.fill();
+                    ctx.restore();
+                },
+                actionHandler: arcControlAction
+            });
+
+            line.setCoords();
+            canvas.requestRenderAll();
+        }
+
+        function arcControlAction(eventData, transform, x, y) {
+            const line = transform.target;
+            const lineLength = Math.sqrt(Math.pow(line.path[1][1] - line.path[0][1], 2) + Math.pow(line.path[1][2] - line.path[0][2], 2));
+            const offset = y / lineLength;
+            updateLineArc(line, offset);
+            return true;
+        }
+
+        function arcControlMouseUp(eventData, transform) {
+            const line = transform.target;
+            canvas.setActiveObject(line);
+            canvas.requestRenderAll();
+        }
+
+        function updateLineArc(line, offset) {
+            const startPoint = line.path[0].slice(1);
+            const endPoint = line.path[1].slice(1);
+
+            const midPoint = {
+                x: (startPoint[0] + endPoint[0]) / 2,
+                y: (startPoint[1] + endPoint[1]) / 2
             };
-            fileReader.readAsDataURL(file);
-        }
+            const length = Math.sqrt(Math.pow(endPoint[0] - startPoint[0], 2) + Math.pow(endPoint[1] - startPoint[1], 2));
 
-        function loadPDFFromURL(url) {
-            resetCanvasTransform();
-            pdfjsLib.getDocument(url).promise.then(doc => {
-                pdfDoc = doc;
-                pageSelector.innerHTML = '';
+            offset = Math.max(Math.min(offset, 0.5), -0.5);
 
-                for (let i = 1; i <= pdfDoc.numPages; i++) {
-                    let option = document.createElement('option');
-                    option.textContent = 'Page ' + i;
-                    option.value = i;
-                    pageSelector.appendChild(option);
-                }
-
-                displayPage(1);
-            }).catch(error => {
-                console.error("Error loading PDF:", error);
-                // Handle error (e.g., show a message to the user)
-            });
-        }
-
-        function loadImageFromURL(url) {
-            if (!url) url = "https://source.unsplash.com/random";
-            resetCanvasTransform();
-            const img = new Image();
-            img.onload = function () {
-                canvas.width = img.width;
-                canvas.height = img.height;
-                ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
-                ctx.drawImage(img, 0, 0, img.width, img.height);
+            const controlPoint = {
+                x: midPoint.x,
+                y: midPoint.y - offset * length
             };
-            img.onerror = function () {
-                console.error("Error loading image.");
-                // Handle error (e.g., show a message to the user)
-            };
-            img.src = url;
+
+            const newPath = `M ${startPoint[0]} ${startPoint[1]} Q ${controlPoint.x} ${controlPoint.y} ${endPoint[0]} ${endPoint[1]}`;
+            line.set({ path: newPath });
+
+            line.setCoords();
+            canvas.requestRenderAll();
         }
 
+        function handleMouseUp() {
+            if (!isDrawing) return;
 
+            isDrawing = false;
 
+            if (currentMode === 'draw-line') {
+                const startPoint = { x: tempShape.x1, y: tempShape.y1 };
+                const endPoint = { x: tempShape.x2, y: tempShape.y2 };
+                const midPoint = {
+                    x: (startPoint.x + endPoint.x) / 2,
+                    y: (startPoint.y + endPoint.y) / 2
+                };
 
-
-        // Event listeners for buttons and dropdown
-
-
-        // document.getElementById('object-1').addEventListener('click', () => {
-        //     addSvgFileToOverlay('./object-2.svg');
-        // });
-
-        // document.getElementById('object-2').addEventListener('click', () => {
-        //     addSvgFileToOverlay('./object-2.svg');
-        // });
-
-
-        // Create the <svg> "canvas" on which we'll draw any lines or shapes to be added
-        async function addSvgFileToOverlay(svgFilename) {
-            try {
-                const response = await fetch(svgFilename);
-                const svgContent = await response.text();
-                const parser = new DOMParser();
-                const svgDoc = parser.parseFromString(svgContent, "image/svg+xml");
-                const svgElement = svgDoc.documentElement;
-
-                svgElement.classList.add("overlay-svg");
-                svgElement.setAttribute("width", "100px"); // Set initial size
-                svgElement.setAttribute("height", "auto");
-
-                document.getElementById("interact-wrapper").appendChild(svgElement);
-
-                updateSvgScale(); // Scale immediately after adding
-            } catch (error) {
-                console.error("Error fetching SVG:", error);
-            }
-        }
-
-        function updateSvgScale() {
-            document.querySelectorAll(".svg-overlay").forEach(svg => {
-                // Ensure transform-origin is set correctly, typically to "0 0" to match canvas behavior
-                svg.style.transformOrigin = '0 0';
-
-                // Apply a transform that exactly matches the canvas/image scaling and translation
-                // If scaling appears doubled, ensure scaleFactor and translations are correctly calculated
-                const transform = `scale(${scaleFactor})`;
-                svg.style.transform = transform;
-            });
-        }
-
-
-
-
-
-
-        // interactCanvasObj.options.drag.enabled = false;
-
-        document.getElementById('handle-radius').addEventListener('input', function () {
-            handleRadius = this.value;
-        });
-
-        document.getElementById('handle-fill').addEventListener('input', function () {
-            handleFill = this.value;
-        });
-
-        document.getElementById('handle-stroke').addEventListener('input', function () {
-            handleStroke = this.value;
-        });
-
-        document.getElementById('handle-stroke-width').addEventListener('input', function () {
-            handleStrokeWidth = this.value;
-        });
-
-        document.getElementById('line-stroke-width').addEventListener('input', function () {
-            // Assuming lineStrokeWidth is your variable for line stroke width
-            lineStrokeWidth = this.value;
-        });
-
-
-        // Line drawing logic
-        let startX, startY, line;
-
-
-
-        // Function to create a new line
-        let lineCounter = 0; // Initialize a counter for line IDs
-
-        function createLine(x1, y1, x2, y2) {
-            const newLine = document.createElementNS(sns, 'line');
-            newLine.setAttribute('x1', x1);
-            newLine.setAttribute('y1', y1);
-            newLine.setAttribute('x2', x2);
-            newLine.setAttribute('y2', y2);
-            newLine.setAttribute('stroke', 'black');
-            newLine.setAttribute('stroke-width', lineStrokeWidth);
-            newLine.setAttribute('id', `line-${lineCounter++}`); // Assign unique ID
-            newLine.classList.add('reveal'); // Add a class to style the line
-
-            return newLine;
-        }
-
-        // Function to get the adjusted mouse position accounting for translations and scale
-        function getAdjustedPosition(event) {
-            const rect = svgOverlay.getBoundingClientRect(); // Get the bounding rectangle of the svgOverlay
-            const x = (event.clientX - rect.left) / scaleFactor;
-            const y = (event.clientY - rect.top) / scaleFactor;
-            return { x, y };
-        }
-
-        function makeLineDraggable(lineId) {
-            interact(`#${lineId}`).draggable({
-                listeners: {
-                    move(event) {
-                        // Logic to handle the drag movement
-                        let dx = event.dx;
-                        let dy = event.dy;
-
-                        // Apply the movement to the line by updating its attributes
-                        const lineElement = event.target;
-                        let x1 = parseFloat(lineElement.getAttribute('x1')) + dx;
-                        let y1 = parseFloat(lineElement.getAttribute('y1')) + dy;
-                        let x2 = parseFloat(lineElement.getAttribute('x2')) + dx;
-                        let y2 = parseFloat(lineElement.getAttribute('y2')) + dy;
-
-                        lineElement.setAttribute('x1', x1);
-                        lineElement.setAttribute('y1', y1);
-                        lineElement.setAttribute('x2', x2);
-                        lineElement.setAttribute('y2', y2);
-                    }
-                }
-            });
-        }
-
-        function activateInteractElement(element) {
-            // Directly enable dragging for the element
-            interact(element).draggable({ enabled: true });
-            element.classList.add('reveal'); // Mark as active for styling
-        }
-
-        function deactivateAllDrawnElements() {
-            linesAndHandles.forEach(({ line, handles }) => {
-                interact(line).draggable({ enabled: false });
-                // line.classList.remove('reveal');
-                handles.forEach(handle => {
-                    interact(handle).draggable({ enabled: false });
-                    // handle.style.display = 'none';
-                    // handle.classList.remove('reveal');
+                const path = new fabric.Path(`M ${startPoint.x} ${startPoint.y} Q ${midPoint.x}, ${midPoint.y}, ${endPoint.x}, ${endPoint.y}`, {
+                    fill: '',
+                    stroke: 'black',
+                    objectCaching: false
                 });
-            });
-            document.querySelectorAll(`.reveal`).forEach(el => {
-                el.classList.remove('reveal');
-            });
-        }
 
-        function removeActiveSelectedElementStyling() {
-            document.querySelectorAll(`.active-selection`).forEach(el => {
-                el.classList.remove('active-selection');
-            });
-        }
+                canvas.remove(tempShape);
+                canvas.add(path);
 
-        function activateDrawnElementGroup(elementId) {
-            // Deactivate all elements first to ensure only one group is active at a time
-            deactivateAllDrawnElements();
+                addCurvePoints(path);
 
-            const element = document.querySelector(`#${elementId}`);
-            if (element) {
-                activateInteractElement(element);
-
-                // Apply dynamic styling to the activated element
-                // element.setAttribute('stroke-width', lineStrokeWidth);
+                canvas.setActiveObject(path);
             }
 
-            const handles = document.querySelectorAll(`.control-ui-item[data-line-id="${elementId}"], .control-ui-item[control-line-id="${elementId}"]`);
-            handles.forEach(handle => {
-                activateInteractElement(handle);
-                // handle.style.display = 'block';
-                handle.classList.add('reveal');
-            });
+            canvas.requestRenderAll();
+            tempShape = null;
         }
 
-        let handleRadius = 2; // Radius of the handle circle
-        let handleFill = 'white'; // Fill color of the handle
-        let handleStroke = 'dodgerblue'; // Stroke color of the handle
-        let handleStrokeWidth = 1; // Stroke width of the handle
-        let lineStrokeWidth = 1; // Stroke width of the line
+        function addCurvePoints(path) {
+            const points = path.path;
 
-        function createHandleForLine(element, atStart) {
-            const handle = document.createElementNS(sns, 'circle');
-            handle.setAttribute('r', handleRadius);
-            // handle.setAttribute('fill', handleFill);
-            // handle.setAttribute('stroke', handleStroke);
-            // handle.setAttribute('stroke-width', handleStrokeWidth);
+            const p0 = makeCurveCircle(points[0][1], points[0][2], null, path, null);
+            p0.name = "p0";
+            canvas.add(p0);
 
-            let x, y;
-            if (element.tagName === 'line') {
-                x = element.getAttribute(atStart ? 'x1' : 'x2');
-                y = element.getAttribute(atStart ? 'y1' : 'y2');
-            } else if (element.tagName === 'path') {
-                const d = element.getAttribute('d');
-                const coords = d.match(/M\s*([\d\.]+)\s*,\s*([\d\.]+)\s*Q\s*([\d\.]+)\s*,\s*([\d\.]+)\s*([\d\.]+)\s*,\s*([\d\.]+)/);
-                x = atStart ? coords[1] : coords[5];
-                y = atStart ? coords[2] : coords[6];
+            const p1 = makeCurvePoint(points[1][1], points[1][2], null, path, null);
+            p1.name = "p1";
+            canvas.add(p1);
+
+            const p2 = makeCurveCircle(points[1][3], points[1][4], null, path, null);
+            p2.name = "p2";
+            canvas.add(p2);
+
+            path.customControlPoints = [p0, p1, p2];
+        }
+
+        function makeCurveCircle(left, top, line1, line2, line3) {
+            var c = new fabric.Circle({
+                left: left,
+                top: top,
+                strokeWidth: 5,
+                radius: 12,
+                fill: '#fff',
+                stroke: '#666'
+            });
+            c.hasBorders = c.hasControls = false;
+            c.line1 = line1;
+            c.line2 = line2;
+            c.line3 = line3;
+            return c;
+        }
+
+        function makeCurvePoint(left, top, line1, line2, line3) {
+            var c = new fabric.Circle({
+                left: left,
+                top: top,
+                strokeWidth: 8,
+                radius: 14,
+                fill: '#fff',
+                stroke: '#666'
+            });
+            c.hasBorders = c.hasControls = false;
+            c.line1 = line1;
+            c.line2 = line2;
+            c.line3 = line3;
+            return c;
+        }
+
+        function onObjectMoving(e) {
+            var p = e.target;
+            if (p.name == "p0" || p.name == "p2") {
+                var path = p.line2;
+                if (p.name == "p0") {
+                    path.path[0][1] = p.left;
+                    path.path[0][2] = p.top;
+                } else if (p.name == "p2") {
+                    path.path[1][3] = p.left;
+                    path.path[1][4] = p.top;
+                }
+            } else if (p.name == "p1") {
+                var path = p.line2;
+                path.path[1][1] = p.left;
+                path.path[1][2] = p.top;
+            }
+            canvas.requestRenderAll();
+        }
+
+        function refreshCanvas() {
+            canvas.forEachObject(function (obj) {
+                standardizeObject(obj);
+            });
+            canvas.renderAll();
+        }
+
+        // Zoom to fit
+        function zoomToFit() {
+            canvas.setZoom(1);
+            canvas.setDimensions({
+                width: window.innerWidth,
+                height: window.innerHeight - 50
+            });
+            canvas.calcOffset();
+
+            const objects = canvas.getObjects();
+            if (objects.length > 0) {
+                const group = new fabric.Group(objects, { active: false });
+                canvas.setViewportTransform([1, 0, 0, 1, 0, 0]); // Reset zoom and pan
+                const canvasWidth = canvas.getWidth();
+                const canvasHeight = canvas.getHeight();
+                const groupWidth = group.width;
+                const groupHeight = group.height;
+                const scaleX = canvasWidth / groupWidth;
+                const scaleY = canvasHeight / groupHeight;
+                const scale = Math.min(scaleX, scaleY) * 0.9; // 90% to leave some margin
+
+                canvas.setZoom(scale);
+                canvas.setViewportTransform([
+                    scale, 0, 0, scale,
+                    (canvasWidth - groupWidth * scale) / 2,
+                    (canvasHeight - groupHeight * scale) / 2
+                ]);
+                canvas.remove(group); // Remove the temporary group
+            } else if (canvas.backgroundImage) {
+                // Existing code for background image...
             }
 
-            handle.setAttribute('cx', x);
-            handle.setAttribute('cy', y);
-            handle.classList.add('drag-handle', 'reveal', 'control-ui-item');
-            handle.setAttribute('data-line-id', element.getAttribute('id'));
-            handle.setAttribute('data-is-start-handle', atStart.toString());
-
-            svgOverlay.appendChild(handle);
-            return handle;
+            updateZoomLevel();
         }
 
-        const linesAndHandles = []; // To track lines and their handles
-
-        function updateConnectingLine(connectingLine, controlX, controlY, midX, midY) {
-            connectingLine.setAttribute('x1', controlX);
-            connectingLine.setAttribute('y1', controlY);
-            connectingLine.setAttribute('x2', midX);
-            connectingLine.setAttribute('y2', midY);
+        // Update zoom level display
+        function updateZoomLevel() {
+            document.getElementById('zoom-level').textContent = `${Math.round(canvas.getZoom() * 100)}%`;
         }
 
-        function assignLineDragInteraction(line) {
-            line.setAttribute('data-join-type', 'line');
-            interact(line)
-                .draggable({
-                    // enable inertial throwing
-                    inertia: false,
-                    enabled: true,
-                    styleCursor: false,
-                    // keep the element within the area of its parent
-                    modifiers: [
-                        interact.modifiers.restrictRect({
-                            restriction: 'parent',
-                            // elementRect: { top: 1, left: 1, bottom: 0, right: 0 },
-                            endOnly: false
-                        })
-                    ],
-                    cursorChecker() {
-                        // don't set a cursor for drag actions
-                        return null
-                    },
-                    // disable autoScroll
-                    autoScroll: false,
-                    // call this function on every dragmove event
-                    onmove: dragLineListener,
-                    // call this function on every dragend event
-                    onend: function (event) {
-                        interact(line).reflow({ name: 'drag', axis: 'xy' });
-                    }
+        // Resize canvas
+        function resizeCanvas() {
+            canvas.setDimensions({
+                width: window.innerWidth,
+                height: window.innerHeight - 50
+            });
+            canvas.calcOffset();
+            canvas.renderAll();
+        }
+
+        // Show property panel
+        function showPropertyPanel(options) {
+            const panel = document.getElementById('property-panel');
+            panel.style.display = 'block';
+            const obj = options.selected[0];
+
+            // Clear existing controls
+            while (panel.firstChild) {
+                panel.removeChild(panel.firstChild);
+            }
+
+            // Add title
+            const title = document.createElement('h3');
+            title.textContent = 'Object Properties';
+            panel.appendChild(title);
+
+            // Add stroke width control
+            const strokeWidthLabel = document.createElement('label');
+            strokeWidthLabel.textContent = 'Stroke Width: ';
+            const strokeWidthInput = document.createElement('input');
+            strokeWidthInput.type = 'number';
+            strokeWidthInput.min = '1';
+            strokeWidthInput.max = '10';
+            strokeWidthInput.step = '1';
+            strokeWidthInput.value = obj.strokeWidth || 1;
+            strokeWidthInput.addEventListener('change', updateStrokeWidth);
+            strokeWidthLabel.appendChild(strokeWidthInput);
+            panel.appendChild(strokeWidthLabel);
+
+            // Add delete button
+            const deleteButton = document.createElement('button');
+            deleteButton.textContent = 'Delete Object';
+            deleteButton.addEventListener('click', deleteSelectedObject);
+            panel.appendChild(deleteButton);
+
+            // Add edit points button for paths
+            if (obj.type === 'path') {
+                const editButton = document.createElement('button');
+                editButton.textContent = editMode ? 'Exit Edit Mode' : 'Edit Points';
+                editButton.addEventListener('click', () => {
+                    makePathEditable(obj);
+                    editButton.textContent = editMode ? 'Exit Edit Mode' : 'Edit Points';
                 });
-        }
-
-        function assignArcDragInteraction(arc) {
-            arc.setAttribute('data-join-type', 'arc');
-            interact(arc)
-                .draggable({
-                    // enable inertial throwing
-                    inertia: false,
-                    enabled: true,
-                    styleCursor: false,
-                    // keep the element within the area of its parent
-                    modifiers: [
-                        interact.modifiers.restrictRect({
-                            restriction: 'parent',
-                            // elementRect: { top: 1, left: 1, bottom: 0, right: 0 },
-                            endOnly: true
-                        })
-                    ],
-                    cursorChecker() {
-                        // don't set a cursor for drag actions
-                        return null
-                    },
-                    // disable autoScroll
-                    autoScroll: false,
-                    // call this function on every dragmove event
-                    onmove: function (event) {
-                        const dx = event.dx / scaleFactor;
-                        const dy = event.dy / scaleFactor;
-
-                        const d = arc.getAttribute('d');
-                        const coords = d.match(/M\s*([\d\.]+)\s*,\s*([\d\.]+)\s*Q\s*([\d\.]+)\s*,\s*([\d\.]+)\s*([\d\.]+)\s*,\s*([\d\.]+)/);
-                        const startX = parseFloat(coords[1]) + dx;
-                        const startY = parseFloat(coords[2]) + dy;
-                        const controlX = parseFloat(coords[3]) + dx;
-                        const controlY = parseFloat(coords[4]) + dy;
-                        const endX = parseFloat(coords[5]) + dx;
-                        const endY = parseFloat(coords[6]) + dy;
-
-                        updateArcPath(arc, startX, startY, endX, endY, controlX, controlY);
-
-                        // Update handle positions
-                        const handles = linesAndHandles.find(item => item.line === arc).handles;
-                        updateHandlePosition(handles[0], startX, startY);
-                        updateHandlePosition(handles[1], endX, endY);
-                        updateHandlePosition(handles[2], controlX, controlY);
-
-                        // Update the control line
-                        const midX = (startX + endX) / 2;
-                        const midY = (startY + endY) / 2;
-                        const controlLine = svgOverlay.querySelector(`.control-ui-item[control-line-id="${arc.getAttribute('id')}"]`);
-                        if (controlLine) {
-                            updateConnectingLine(controlLine, controlX, controlY, midX, midY);
-                        }
-                    },
-                    // call this function on every dragend event
-                    onend: function (event) {
-                        interact(arc).reflow({ name: 'drag', axis: 'xy' });
-                    }
-                });
-        }
-
-        function assignHandleDragInteraction(handle) {
-            interact(handle)
-                .draggable({
-                    enabled: true,
-                    modifiers: [
-                        interact.modifiers.restrictRect({
-                            restriction: 'parent',
-                            endOnly: true
-                        })
-                    ],
-                    listeners: {
-                        move: dragHandleListener
-                    }
-                });
-        }
-
-        function dragLineListener(event) {
-            // Correctly adjust deltas for zoom level
-            let dx = event.dx / scaleFactor;
-            let dy = event.dy / scaleFactor;
-
-            // Retrieve the line element and its ID
-            const lineElement = event.target;
-            const lineId = lineElement.getAttribute('id');
-
-            // Find the corresponding handles for this line
-            const { handles } = linesAndHandles.find(({ line }) => line.id === lineId) || {};
-            // console.log(handles);
-
-            // Update line position
-            const x1 = parseFloat(lineElement.getAttribute('x1')) + dx;
-            const y1 = parseFloat(lineElement.getAttribute('y1')) + dy;
-            const x2 = parseFloat(lineElement.getAttribute('x2')) + dx;
-            const y2 = parseFloat(lineElement.getAttribute('y2')) + dy;
-
-            lineElement.setAttribute('x1', x1);
-            lineElement.setAttribute('y1', y1);
-            lineElement.setAttribute('x2', x2);
-            lineElement.setAttribute('y2', y2);
-
-            // Update handle positions if they exist
-            if (handles) {
-                handles.forEach(handle => {
-                    const isStartHandle = handle.getAttribute('data-is-start-handle') === 'true';
-                    handle.setAttribute('cx', isStartHandle ? x1 : x2);
-                    handle.setAttribute('cy', isStartHandle ? y1 : y2);
-                });
+                panel.appendChild(editButton);
             }
         }
 
-        function dragHandleListener(event) {
-            const handle = event.target;
-            const lineId = handle.getAttribute('data-line-id');
-            const isStartHandle = handle.getAttribute('data-is-start-handle') === 'true';
-            const isSharedHandle = handle.getAttribute('data-shared-handle-for');
-            const isControlHandle = handle.getAttribute('data-is-control-handle') === 'true';
-
-            // Assign the dragged element and handle to the global variables
-            draggedElement = svgOverlay.querySelector(`#${lineId}`);
-            draggedHandle = handle;
-
-            // Update the handle's position
-            let cx = parseFloat(handle.getAttribute('cx')) + event.dx / scaleFactor;
-            let cy = parseFloat(handle.getAttribute('cy')) + event.dy / scaleFactor;
-            handle.setAttribute('cx', cx);
-            handle.setAttribute('cy', cy);
-
-            // Find the associated element (line or arc) and update its path
-            const element = svgOverlay.querySelector(`#${lineId}`);
-            if (element) {
-                let draggedPoint = null;
-                const joinType = draggedElement.getAttribute('data-join-type');
-                if (element.tagName === 'line') {
-                    // Update line start or end point
-                    if (isStartHandle) {
-                        element.setAttribute('x1', cx);
-                        element.setAttribute('y1', cy);
-                        draggedPoint = { x: cx, y: cy };
-                    } else if (isSharedHandle) {
-                        // Update the connected lines when dragging the middle handle
-                        const line1 = draggedElement;
-                        const line2 = svgOverlay.querySelector(`#${isSharedHandle}`);
-                        console.log(line1);
-                        console.log(line2);
-
-                        line1.setAttribute('x2', cx);
-                        line1.setAttribute('y2', cy);
-                        line2.setAttribute('x1', cx);
-                        line2.setAttribute('y1', cy);
-                    } else {
-                        element.setAttribute('x2', cx);
-                        element.setAttribute('y2', cy);
-                        draggedPoint = { x: cx, y: cy };
-                    }
-                } else if (element.tagName === 'path') {
-                    const d = element.getAttribute('d');
-                    const coords = d.match(/M\s*([\d\.]+)\s*,\s*([\d\.]+)\s*Q\s*([\d\.]+)\s*,\s*([\d\.]+)\s*([\d\.]+)\s*,\s*([\d\.]+)/);
-
-
-                    if (coords) {
-                        const startX = isStartHandle ? cx : parseFloat(coords[1]);
-                        const startY = isStartHandle ? cy : parseFloat(coords[2]);
-                        const controlX = isControlHandle ? cx : parseFloat(coords[3]);
-                        const controlY = isControlHandle ? cy : parseFloat(coords[4]);
-                        const endX = !isStartHandle && !isControlHandle ? cx : parseFloat(coords[5]);
-                        const endY = !isStartHandle && !isControlHandle ? cy : parseFloat(coords[6]);
-
-                        updateArcPath(element, startX, startY, endX, endY, controlX, controlY);
-
-                        // Update the control line
-                        const midX = (startX + endX) / 2;
-                        const midY = (startY + endY) / 2;
-                        const controlLine = svgOverlay.querySelector(`.control-ui-item[control-line-id="${lineId}"]`);
-                        if (controlLine) {
-                            updateConnectingLine(controlLine, controlX, controlY, midX, midY);
-                        }
-
-                        if (isStartHandle) {
-                            draggedPoint = { x: startX, y: startY };
-                        } else if (!isControlHandle) {
-                            draggedPoint = { x: endX, y: endY };
-                        }
-                    }
-                }
-
-                if (draggedPoint) {
-                    checkProximity(draggedPoint, element);
-                }
-            }
+        // Hide property panel
+        function hidePropertyPanel() {
+            document.getElementById('property-panel').style.display = 'none';
         }
 
-
-        svgOverlay.addEventListener('mousedown', function (event) {
-            if (interactionMode === 'draw') {
-                const isArcMode = document.getElementById('arc-mode-toggle').checked;
-
-                if (isArcMode) {
-                    startDrawingArc(event);
-                } else {
-                    startDrawingLine(event);
-                }
-            }
-        });
-
-        // Function to start drawing an arc
-        function startDrawingArc(event) {
-            const { x, y } = getAdjustedPosition(event);
-            startX = x;
-            startY = y;
-
-            // Initialize the arc
-            const arcPath = createArcPath(startX, startY);
-            svgOverlay.appendChild(arcPath);
-
-            // Create handles for the start, end, and control points of the arc
-            const startHandle = createHandleForLine(arcPath, true);
-            const endHandle = createHandleForLine(arcPath, false);
-            const { handle: controlHandle, connectingLine } = createHandleForControlPoint(arcPath);
-
-            const obj = { line: arcPath, handles: [startHandle, endHandle, controlHandle], connectingLine }
-
-
-            // Track the arc and its handles
-            linesAndHandles.push(obj);
-
-            // Event handler for updating the arc's end point on mouse move
-            function mouseMoveHandler(event) {
-                const { x: moveX, y: moveY } = getAdjustedPosition(event);
-                const controlX = (startX + moveX) / 2;
-                const controlY = (startY + moveY) / 2;
-                updateArcPath(arcPath, startX, startY, moveX, moveY, controlX, controlY);
-                updateHandlePosition(endHandle, moveX, moveY);
-                updateHandlePosition(controlHandle, controlX, controlY);
-
-                const midX = (startX + moveX) / 2;
-                const midY = (startY + moveY) / 2;
-                updateConnectingLine(connectingLine, controlX, controlY, midX, midY);
+        function updatePathPoints(path) {
+            if (!path.edit) {
+                path.controls = fabric.Object.prototype.controls;
+                return;
             }
 
-            // Update arc's end point on mouse move
-            svgOverlay.addEventListener('mousemove', mouseMoveHandler);
-
-            // Finalize the arc on mouse up
-            svgOverlay.addEventListener('mouseup', function () {
-                svgOverlay.removeEventListener('mousemove', mouseMoveHandler);
-                assignArcDragInteraction(arcPath);
-                obj.handles.forEach(handle => assignHandleDragInteraction(handle));
-            }, { once: true });
-        }
-
-        // Function to start drawing a line
-        function startDrawingLine(event) {
-            const { x, y } = getAdjustedPosition(event);
-            startX = x;
-            startY = y;
-
-            // Initialize the line
-            line = createLine(startX, startY, startX, startY);
-            svgOverlay.appendChild(line);
-
-            // Create handles for both ends of the line
-            const startHandle = createHandleForLine(line, true);
-            const endHandle = createHandleForLine(line, false);
-
-            // Track the line and its handles
-            const obj = { line, handles: [startHandle, endHandle] };
-            linesAndHandles.push(obj);
-
-            // Event handler for updating the line's end point on mouse move
-            function mouseMoveHandler(event) {
-                const { x: moveX, y: moveY } = getAdjustedPosition(event);
-                updateLineEndPoint(line, moveX, moveY);
-                updateHandlePosition(endHandle, moveX, moveY);
-            }
-
-            // Update line's end point on mouse move
-            svgOverlay.addEventListener('mousemove', mouseMoveHandler);
-
-            // Finalize the line on mouse up
-            svgOverlay.addEventListener('mouseup', function () {
-                svgOverlay.removeEventListener('mousemove', mouseMoveHandler);
-                assignLineDragInteraction(line);
-                obj.handles.forEach(handle => assignHandleDragInteraction(handle));
-            }, { once: true });
-        }
-
-        // Function to create an arc path element
-        function createArcPath(startX, startY) {
-            const arcPath = document.createElementNS(sns, 'path');
-            arcPath.setAttribute('d', `M ${startX},${startY} Q ${startX},${startY} ${startX},${startY}`);
-            arcPath.setAttribute('stroke', 'black');
-            arcPath.setAttribute('stroke-width', lineStrokeWidth);
-            arcPath.setAttribute('fill', 'none');
-            arcPath.setAttribute('id', `arc-${lineCounter++}`);
-            arcPath.classList.add('reveal');
-            return arcPath;
-        }
-
-        // Function to update the position of a handle
-        function updateHandlePosition(handle, x, y) {
-            handle.setAttribute('cx', x);
-            handle.setAttribute('cy', y);
-        }
-
-        // Function to update the end point of a line
-        function updateLineEndPoint(line, x, y) {
-            line.setAttribute('x2', x);
-            line.setAttribute('y2', y);
-        }
-
-
-
-        svgOverlay.addEventListener('click', function (event) {
-            // Check if we're in drawing mode, if so, ignore clicks for activation
-            if (interactionMode === 'draw') return;
-
-            const target = event.target;
-            const isLine = target.tagName === 'line';
-            const isHandle = target.classList.contains('drag-handle') || target.classList.contains('control-handle');
-            const isArc = target.tagName === 'path';
-
-            removeActiveSelectedElementStyling();
-            if (isHandle) target.classList.add('active-selection');
-
-
-            if (isLine || isHandle || isArc) {
-                // Determine the ID to use for querying the group
-                const elementId = isLine || isArc ? target.id : target.getAttribute('data-line-id');
-                console.log(target.classList);
-                activateDrawnElementGroup(elementId);
-            } else {
-                // If the click is outside, deactivate all
-                deactivateAllDrawnElements();
-            }
-        });
-
-        // Function to create a handle for the control point of the arc
-        function createHandleForControlPoint(arcPath) {
-
-            const connectingLine = document.createElementNS(sns, 'line');
-            connectingLine.setAttribute('stroke-dasharray', '2, 2');
-            connectingLine.setAttribute('control-line-id', arcPath.getAttribute('id'));
-
-            connectingLine.classList.add('control-ui-item', 'reveal', 'control-line');
-            svgOverlay.appendChild(connectingLine);
-
-            const handle = document.createElementNS(sns, 'circle');
-            handle.setAttribute('r', handleRadius);
-            handle.setAttribute('fill', handleFill);
-            handle.setAttribute('stroke', handleStroke);
-            // handle.setAttribute('stroke-width', handleStrokeWidth);
-
-            const d = arcPath.getAttribute('d');
-            const coords = d.match(/M\s*([\d\.]+)\s*,\s*([\d\.]+)\s*Q\s*([\d\.]+)\s*,\s*([\d\.]+)\s*([\d\.]+)\s*,\s*([\d\.]+)/);
-            const cx = coords[3];
-            const cy = coords[4];
-
-            handle.setAttribute('cx', cx);
-            handle.setAttribute('cy', cy);
-            handle.classList.add('control-handle', 'reveal', 'control-ui-item');
-            handle.setAttribute('data-line-id', arcPath.getAttribute('id'));
-            handle.setAttribute('data-is-control-handle', 'true');
-
-            svgOverlay.appendChild(handle);
-
-            return { handle, connectingLine };
-        }
-
-        // Function to update the arc path based on the start, end, and control point coordinates
-        function updateArcPath(arcPath, startX, startY, endX, endY, controlX, controlY) {
-            const d = `M ${startX},${startY} Q ${controlX},${controlY} ${endX},${endY}`;
-            arcPath.setAttribute('d', d);
-        }
-
-        function convertLineToArc(line) {
-            const startX = parseFloat(line.getAttribute('x1'));
-            const startY = parseFloat(line.getAttribute('y1'));
-            const endX = parseFloat(line.getAttribute('x2'));
-            const endY = parseFloat(line.getAttribute('y2'));
-
-            const arcPath = document.createElementNS(sns, 'path');
-            const controlX = (startX + endX) / 2;
-            const controlY = (startY + endY) / 2;
-            updateArcPath(arcPath, startX, startY, endX, endY, controlX, controlY);
-            arcPath.setAttribute('stroke', line.getAttribute('stroke'));
-            arcPath.setAttribute('stroke-width', line.getAttribute('stroke-width'));
-            arcPath.setAttribute('fill', 'none');
-            arcPath.setAttribute('id', `arc-${lineCounter++}`);
-            arcPath.classList.add('reveal');
-
-            // Replace the line with the arc in the SVG
-            svgOverlay.removeChild(line);
-            svgOverlay.appendChild(arcPath);
-
-            // Update the linesAndHandles array
-            const lineIndex = linesAndHandles.findIndex(item => item.line === line);
-            if (lineIndex !== -1) {
-                const { handles } = linesAndHandles[lineIndex];
-                const startHandle = handles.find(handle => handle.getAttribute('data-is-start-handle') === 'true');
-                const endHandle = handles.find(handle => handle.getAttribute('data-is-start-handle') === 'false');
-                const controlHandle = createHandleForControlPoint(arcPath);
-                linesAndHandles[lineIndex] = { line: arcPath, handles: [startHandle, endHandle, controlHandle] };
-
-                // Update event listeners for the control handle
-                interact(controlHandle).draggable({
-                    enabled: true,
-                    modifiers: [
-                        interact.modifiers.restrict({
-                            restriction: 'parent',
-                            endOnly: true
-                        })
-                    ],
-                    listeners: {
-                        move: handleControlPointDrag
-                    }
-                });
-            }
-        }
-        function convertArcToLine(arcPath) {
-            const startX = parseFloat(arcPath.getAttribute('x1'));
-            const startY = parseFloat(arcPath.getAttribute('y1'));
-            const endX = parseFloat(arcPath.getAttribute('x2'));
-            const endY = parseFloat(arcPath.getAttribute('y2'));
-
-            const line = document.createElementNS(sns, 'line');
-            line.setAttribute('x1', startX);
-            line.setAttribute('y1', startY);
-            line.setAttribute('x2', endX);
-            line.setAttribute('y2', endY);
-            line.setAttribute('stroke', arcPath.getAttribute('stroke'));
-            line.setAttribute('stroke-width', arcPath.getAttribute('stroke-width'));
-            line.setAttribute('id', `line-${lineCounter++}`);
-            line.classList.add('reveal');
-
-            // Replace the arc with the line in the SVG
-            svgOverlay.removeChild(arcPath);
-            svgOverlay.appendChild(line);
-
-            // Update the linesAndHandles array
-            const arcIndex = linesAndHandles.findIndex(item => item.line === arcPath);
-            if (arcIndex !== -1) {
-                const { handles } = linesAndHandles[arcIndex];
-                const startHandle = handles.find(handle => handle.getAttribute('data-is-start-handle') === 'true');
-                const endHandle = handles.find(handle => handle.getAttribute('data-is-start-handle') === 'false');
-                linesAndHandles[arcIndex] = { line, handles: [startHandle, endHandle] };
-            }
-        }
-
-        function handleControlPointDrag(event) {
-            const handle = event.target;
-            const lineId = handle.getAttribute('data-line-id');
-            const isControlHandle = handle.getAttribute('data-is-control-handle') === 'true';
-
-            // Update the handle's position
-            let cx = parseFloat(handle.getAttribute('cx')) + event.dx / scaleFactor;
-            let cy = parseFloat(handle.getAttribute('cy')) + event.dy / scaleFactor;
-            handle.setAttribute('cx', cx);
-            handle.setAttribute('cy', cy);
-
-            // Find the associated arc and update its path
-            const arc = svgOverlay.querySelector(`#${lineId}`);
-            if (arc) {
-                const d = arc.getAttribute('d');
-                const coords = d.match(/M\s*([\d\.]+)\s*,\s*([\d\.]+)\s*Q\s*([\d\.]+)\s*,\s*([\d\.]+)\s*([\d\.]+)\s*,\s*([\d\.]+)/);
-
-                if (coords) {
-                    const startX = parseFloat(coords[1]);
-                    const startY = parseFloat(coords[2]);
-                    const endX = parseFloat(coords[5]);
-                    const endY = parseFloat(coords[6]);
-
-                    if (isControlHandle) {
-                        updateArcPath(arc, startX, startY, endX, endY, cx, cy);
-                    }
-                }
-            }
-        }
-
-        document.getElementById('applyStyles').addEventListener('click', function () {
-            // Assume active elements are marked with an 'active' class
-            const activeLines = document.querySelectorAll('line.reveal');
-            const activeHandles = document.querySelectorAll('circle.reveal');
-
-            // Retrieve current styles from inputs
-            const handleRadius = document.getElementById('handle-radius').value;
-            const handleFill = document.getElementById('handle-fill').value;
-            const handleStroke = document.getElementById('handle-stroke').value;
-            const handleStrokeWidth = document.getElementById('handle-stroke-width').value;
-            const lineStrokeWidth = document.getElementById('line-stroke-width').value;
-            const isArcMode = document.getElementById('arc-mode-toggle').checked;
-
-            // Apply styles to active lines
-            activeLines.forEach(line => {
-                line.style.strokeWidth = `${lineStrokeWidth}px`;
-                if (isArcMode && line.tagName === 'line') {
-                    convertLineToArc(line);
-                } else if (!isArcMode && line.tagName === 'path') {
-                    convertArcToLine(line);
-                }
-            });
-
-            // Apply styles to active handles
-            activeHandles.forEach(handle => {
-                handle.setAttribute('r', handleRadius);
-                handle.setAttribute('fill', handleFill);
-                handle.setAttribute('stroke', handleStroke);
-                handle.setAttribute('stroke-width', handleStrokeWidth);
-            });
-
-        });
-
-
-        // Line joining logic
-
-        let proximityThreshold = 10; // Adjust the proximity threshold as needed
-        let targetPoint = null;
-        let draggedElement = null;
-        let draggedHandle = null;
-
-        function handleKeydown(event) {
-            if (event.shiftKey && targetPoint && draggedElement && draggedHandle) {
-                console.log('Shift pressed while in proximity of:', targetPoint);
-
-                const targetLineId = targetPoint.getAttribute('data-line-id');
-                const targetLine = svgOverlay.querySelector(`#${targetLineId}`);
-                const isTargetStartHandle = targetPoint.getAttribute('data-is-start-handle') === 'true';
-
-                const isDraggedStartHandle = draggedHandle.getAttribute('data-is-start-handle') === 'true';
-
-                const targetOppositeHandle = isTargetStartHandle ? getEndHandle(targetLine) : getStartHandle(targetLine);
-                const draggedOppositeHandle = isDraggedStartHandle ? getEndHandle(draggedElement) : getStartHandle(draggedElement);
-
-                const startX = parseFloat(targetOppositeHandle.getAttribute('cx'));
-                const startY = parseFloat(targetOppositeHandle.getAttribute('cy'));
-                const midX = parseFloat(targetPoint.getAttribute('cx'));
-                const midY = parseFloat(targetPoint.getAttribute('cy'));
-                const endX = parseFloat(draggedOppositeHandle.getAttribute('cx'));
-                const endY = parseFloat(draggedOppositeHandle.getAttribute('cy'));
-
-                // Remove the existing lines and their handles
-
-                if (event.code === 'KeyA') {
-                    removeLine(targetLine);
-                    removeLine(draggedElement);
-                    // Create a new arc
-                    const arcPath = createArcPath(startX, startY);
-                    updateArcPath(arcPath, startX, startY, endX, endY, midX, midY);
-                    svgOverlay.appendChild(arcPath);
-
-                    // Create handles for the start, end, and control points of the arc
-                    const startHandle = createHandleForLine(arcPath, true);
-                    const endHandle = createHandleForLine(arcPath, false);
-                    const { handle: controlHandle, connectingLine } = createHandleForControlPoint(arcPath);
-
-                    const obj = { line: arcPath, handles: [startHandle, endHandle, controlHandle], connectingLine };
-                    linesAndHandles.push(obj);
-
-                    // Assign drag interactions to the arc and handles
-                    assignArcDragInteraction(arcPath);
-                    obj.handles.forEach(handle => assignHandleDragInteraction(handle));
-                } else if (event.code === 'KeyL') {
-                    removeLine(targetLine);
-                    removeLine(draggedElement);
-                    // Create two lines connected at the middle point
-                    const line1 = createLine(startX, startY, midX, midY);
-                    const line2 = createLine(midX, midY, endX, endY);
-                    svgOverlay.appendChild(line1);
-                    svgOverlay.appendChild(line2);
-
-                    // Create handles for the start, middle, and end points
-                    const startHandle = createHandleForLine(line1, true);
-                    const midHandle = createHandleForLine(line1, false);
-                    midHandle.setAttribute('data-shared-handle-for', line2.getAttribute('id'));
-                    const endHandle = createHandleForLine(line2, false);
-
-                    const obj1 = { line: line1, handles: [startHandle, midHandle] };
-                    const obj2 = { line: line2, handles: [midHandle, endHandle] };
-                    linesAndHandles.push(obj1, obj2);
-
-                    // Assign drag interactions to the lines and handles
-                    assignLineDragInteraction(line1);
-                    assignLineDragInteraction(line2);
-                    obj1.handles.forEach(handle => assignHandleDragInteraction(handle));
-                    obj2.handles.forEach(handle => assignHandleDragInteraction(handle));
-                }
-            }
-
-        }
-
-        function getStartHandle(line) {
-            return document.querySelector(`[data-line-id="${line.id}"][data-is-start-handle="true"]`);
-        }
-
-        function getEndHandle(line) {
-            return document.querySelector(`[data-line-id="${line.id}"][data-is-start-handle="false"]`);
-        }
-
-        function removeLine(line) {
-            const lineId = line.getAttribute('id');
-            const { handles, connectingLine } = linesAndHandles.find(item => item.line.id === lineId);
-
-            // Remove the line and its handles from the SVG
-            svgOverlay.removeChild(line);
-            handles.forEach(handle => svgOverlay.removeChild(handle));
-            if (connectingLine) {
-                svgOverlay.removeChild(connectingLine);
-            }
-
-            // Remove the line from the linesAndHandles array
-            const index = linesAndHandles.findIndex(item => item.line.id === lineId);
-            if (index !== -1) {
-                linesAndHandles.splice(index, 1);
-            }
-        }
-
-
-        document.addEventListener('keydown', handleKeydown);
-
-
-        function checkProximity(draggedPoint, draggedElement) {
-            targetPoint = null;
-
-            linesAndHandles.forEach(({ line, handles }) => {
-                if (line !== draggedElement) {
-                    handles.forEach(handle => {
-                        const handleX = parseFloat(handle.getAttribute('cx'));
-                        const handleY = parseFloat(handle.getAttribute('cy'));
-                        const distance = Math.sqrt(
-                            (draggedPoint.x - handleX) ** 2 + (draggedPoint.y - handleY) ** 2
-                        );
-
-                        if (distance <= proximityThreshold) {
-                            handle.classList.add('reveal', 'drop-target-active');
-                            targetPoint = handle;
-                        } else {
-                            handle.classList.remove('reveal', 'drop-target-active');
+            const points = path.path;
+            path.controls = {};
+            points.forEach((point, index) => {
+                if (point[0] === 'M' || point[0] === 'L') {
+                    path.controls[`p${index}`] = new fabric.Control({
+                        positionHandler: function (dim, finalMatrix, fabricObject) {
+                            return new fabric.Point(point[1], point[2])
+                                .transform(fabricObject.calcTransformMatrix());
+                        },
+                        actionHandler: function (eventData, transform, x, y) {
+                            const invertedMatrix = fabric.util.invertTransform(path.calcTransformMatrix());
+                            const newPoint = fabric.util.transformPoint(new fabric.Point(x, y), invertedMatrix);
+                            point[1] = newPoint.x;
+                            point[2] = newPoint.y;
+                            return true;
+                        },
+                        actionName: 'modifyPolygon',
+                        render: function (ctx, left, top, styleOverride, fabricObject) {
+                            const size = this.sizeX;
+                            ctx.fillStyle = editMode ? 'red' : 'blue';
+                            ctx.beginPath();
+                            ctx.arc(left, top, size, 0, 2 * Math.PI, false);
+                            ctx.fill();
                         }
                     });
                 }
             });
         }
+
+        let editMode = false;
+
+        function makePathEditable(path) {
+            return
+            if (path.type !== 'path') return;
+
+            editMode = !editMode;
+            path.edit = editMode;
+
+            if (editMode) {
+                // Enter edit mode
+                canvas.discardActiveObject();
+                canvas.selection = false;
+                canvas.forEachObject(function (obj) {
+                    obj.selectable = false;
+                    obj.evented = false;
+                });
+                path.selectable = true;
+                path.evented = true;
+                canvas.setActiveObject(path);
+            } else {
+                // Exit edit mode
+                canvas.selection = true;
+                canvas.forEachObject(function (obj) {
+                    obj.selectable = true;
+                    obj.evented = true;
+                });
+            }
+
+            updatePathPoints(path);
+            canvas.requestRenderAll();
+        }
+
+        // Add this to your init function:
+        canvas.on('mouse:dblclick', function (options) {
+            if (options.target && options.target.type === 'path') {
+                makePathEditable(options.target);
+            }
+        });
+
+        // Update stroke width
+        function updateStrokeWidth(e) {
+            const obj = canvas.getActiveObject();
+            if (obj) {
+                obj.set('strokeWidth', parseInt(e.target.value));
+                canvas.renderAll();
+            }
+        }
+
+        // Delete selected object
+        function deleteSelectedObject() {
+            const obj = canvas.getActiveObject();
+            if (obj) {
+                canvas.remove(obj);
+                hidePropertyPanel();
+            }
+        }
+
+        // Initialize the application
+        init();
     </script>
 </body>
 
