@@ -3,18 +3,14 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>SVG Path Editor POC</title>
-    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+    <title>SVG Path Editor with Fabric.js</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.9.359/pdf.min.js"></script>
     <style>
         :root {
             --bg-color: #fff;
             --grid-color-1: #366;
             --grid-color-2: #a9a9a9;
-            --handle-fill: white;
-            --handle-stroke: dodgerblue;
-            --handle-stroke-active: honeydew;
-            --handle-focus-outline: rgba(51, 217, 178, 1);
         }
 
         body,
@@ -45,37 +41,9 @@
             background-position: -1.5px -1.5px, -1.5px -1.5px, -1px -1px, -1px -1px;
         }
 
-        .interact-wrapper {
-            position: absolute;
-            transform-origin: 0 0;
-            transition: transform 0.3s ease;
-            /* Smooth zoom transition */
-        }
-
-        #the-canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-        }
-
-        #svg-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            pointer-events: none;
-        }
-
-        .handle {
-            fill: var(--handle-fill);
-            stroke: var(--handle-stroke);
-            stroke-width: 2;
-            cursor: move;
-        }
-
-        .handle:hover,
-        .handle.active {
-            stroke: var(--handle-stroke-active);
-            outline: 2px solid var(--handle-focus-outline);
+        #canvas-container {
+            width: 100%;
+            height: 100%;
         }
 
         #property-panel {
@@ -97,68 +65,115 @@
         <button id="load-svg">Load SVG</button>
         <button id="mode-pan">Pan</button>
         <button id="mode-select">Select</button>
-        <button id="mode-draw">Draw</button>
+        <!-- <button id="mode-draw">Draw</button> -->
+        <button id="mode-draw-line">Draw Line</button>
+        <button id="mode-draw-circle">Draw Circle</button>
+        <button id="mode-draw-rectangle">Draw Rectangle</button>
         <button id="zoom-fit">Zoom to Fit</button>
         <span>Zoom: <span id="zoom-level">100%</span></span>
     </div>
     <div class="media-wrapper">
-        <div class="interact-wrapper">
-            <canvas id="the-canvas"></canvas>
-            <svg id="svg-overlay"></svg>
+        <div id="canvas-container">
+            <canvas id="fabric-canvas"></canvas>
         </div>
     </div>
     <div id="property-panel">
-        <h3>Path Properties</h3>
+        <h3>Object Properties</h3>
         <label>
             Stroke Width:
             <input type="number" id="stroke-width" min="1" max="10" step="1" value="1">
         </label>
-        <button id="delete-path">Delete Path</button>
+        <button id="delete-object">Delete Object</button>
     </div>
 
     <input type="file" id="pdf-input" accept=".pdf" style="display: none;">
     <input type="file" id="svg-input" accept=".svg" style="display: none;">
 
-    <script type="module">
+    <script>
         // PDF.js initialization
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.9.359/pdf.worker.min.js';
 
-        // DOM elements
-        const canvas = document.getElementById('the-canvas');
-        const ctx = canvas.getContext('2d');
-        const svgOverlay = document.getElementById('svg-overlay');
-        const interactWrapper = document.querySelector('.interact-wrapper');
-        const pdfInput = document.getElementById('pdf-input');
-        const svgInput = document.getElementById('svg-input');
-        const propertyPanel = document.getElementById('property-panel');
+        // Initialize Fabric canvas
+        const canvas = new fabric.Canvas('fabric-canvas', {
+            width: window.innerWidth,
+            height: window.innerHeight - 50,
+            backgroundColor: 'rgba(0,0,0,0)'
+        });
 
         // Global variables
         let currentPdf = null;
-        let currentScale = 1;
-        let currentMode = 'pan';
-        let selectedPath = null;
-
-        // Interaction states
-        let isDragging = false;
-        let startX, startY;
+        let currentMode = 'select';
+        let isDrawing = false;
+        let startPoint;
+        let tempShape;
 
         // Initialize
         function init() {
-            document.getElementById('load-pdf').addEventListener('click', () => pdfInput.click());
-            document.getElementById('load-svg').addEventListener('click', () => svgInput.click());
+            document.getElementById('load-pdf').addEventListener('click', () => document.getElementById('pdf-input').click());
+            document.getElementById('load-svg').addEventListener('click', () => document.getElementById('svg-input').click());
             document.getElementById('mode-pan').addEventListener('click', () => setMode('pan'));
             document.getElementById('mode-select').addEventListener('click', () => setMode('select'));
-            document.getElementById('mode-draw').addEventListener('click', () => setMode('draw'));
+            // document.getElementById('mode-draw').addEventListener('click', () => setMode('draw'));
             document.getElementById('zoom-fit').addEventListener('click', zoomToFit);
-            pdfInput.addEventListener('change', loadPDF);
-            svgInput.addEventListener('change', loadSVG);
-            interactWrapper.addEventListener('mousedown', handleMouseDown);
-            interactWrapper.addEventListener('mousemove', handleMouseMove);
-            interactWrapper.addEventListener('mouseup', handleMouseUp);
-            interactWrapper.addEventListener('wheel', handleWheel);
-            window.addEventListener('resize', () => {
-                scaleSVGToCanvas();
-                zoomToFit();
+            document.getElementById('pdf-input').addEventListener('change', loadPDF);
+            document.getElementById('svg-input').addEventListener('change', loadSVG);
+            document.getElementById('stroke-width').addEventListener('change', updateStrokeWidth);
+            document.getElementById('delete-object').addEventListener('click', deleteSelectedObject);
+            document.getElementById('mode-draw-line').addEventListener('click', () => setMode('draw-line'));
+            document.getElementById('mode-draw-circle').addEventListener('click', () => setMode('draw-circle'));
+            document.getElementById('mode-draw-rectangle').addEventListener('click', () => setMode('draw-rectangle'));
+
+            canvas.on('mouse:down', handleMouseDown);
+            canvas.on('mouse:move', handleMouseMove);
+            canvas.on('mouse:up', handleMouseUp);
+            canvas.on('object:moving', onObjectMoving);
+
+            // Set global object properties
+            fabric.Object.prototype.transparentCorners = false;
+            fabric.Object.prototype.cornerColor = 'blue';
+            fabric.Object.prototype.cornerStyle = 'circle';
+            fabric.Object.prototype.cornerSize = 10;
+            fabric.Object.prototype.padding = 5;
+
+            // Ensure newly added objects are standardized
+            canvas.on('object:added', function (e) {
+                standardizeObject(e.target);
+            });
+
+            // Improve selection behavior
+            canvas.on('selection:created', function (e) {
+                if (e.selected.length > 1) {
+                    e.target.set({
+                        hasControls: true,
+                        hasBorders: true
+                    });
+                }
+            });
+
+            window.addEventListener('resize', resizeCanvas);
+
+            canvas.on('selection:created', showPropertyPanel);
+            canvas.on('selection:cleared', hidePropertyPanel);
+            canvas.on('mouse:down', function (options) {
+                if (editMode && options.target && options.target.type === 'path') {
+                    canvas.setActiveObject(options.target);
+                }
+            });
+
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && editMode) {
+                    const activePath = canvas.getActiveObject();
+                    if (activePath && activePath.type === 'path') {
+                        makePathEditable(activePath);
+                        showPropertyPanel({ selected: [activePath] });
+                    }
+                }
+            });
+
+            canvas.on('object:modified', function (e) {
+                if (e.target.type === 'path' && e.target.edit) {
+                    updatePathPoints(e.target);
+                }
             });
         }
 
@@ -177,14 +192,68 @@
         async function renderPage(pageNumber) {
             const page = await currentPdf.getPage(pageNumber);
             const viewport = page.getViewport({ scale: 1 });
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
+            const pdfCanvas = document.createElement('canvas');
+            const context = pdfCanvas.getContext('2d');
+            pdfCanvas.height = viewport.height;
+            pdfCanvas.width = viewport.width;
 
-            await page.render({ canvasContext: ctx, viewport: viewport }).promise;
-            scaleSVGToCanvas();
-            zoomToFit();
+            await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+            fabric.Image.fromURL(pdfCanvas.toDataURL(), function (img) {
+                canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
+                    scaleX: canvas.width / img.width,
+                    scaleY: canvas.height / img.height
+                });
+                zoomToFit();
+            });
         }
 
+        function standardizeObject(obj) {
+            obj.set({
+                selectable: true,
+                hasControls: true,
+                hasBorders: true,
+                perPixelTargetFind: true,
+                targetFindTolerance: 4,
+                strokeUniform: true,
+                objectCaching: false
+            });
+
+            if (obj.type === 'path' && !obj.customControlPoints) {
+                addCurvePoints(obj);
+            }
+            
+            if (obj.type === 'path') {
+                obj.strokeLineJoin = 'round';
+                obj.strokeLineCap = 'round';
+
+                // Check if the path is a straight line and add arc control if it is
+                if (obj.path.length === 2 && obj.path[0][0] === 'M' && obj.path[1][0] === 'L') {
+                    addArcControlToLine(obj);
+                }
+            }
+
+            if (obj.type === 'line') {
+                // Convert line to path and add arc control
+                const path = new fabric.Path(`M ${obj.x1} ${obj.y1} L ${obj.x2} ${obj.y2}`, {
+                    stroke: obj.stroke,
+                    strokeWidth: obj.strokeWidth,
+                    selectable: true,
+                    evented: true,
+                    objectCaching: false
+                });
+                canvas.remove(obj);
+                canvas.add(path);
+                addArcControlToLine(path);
+                return path;
+            }
+
+            if (obj.type === 'group') {
+                obj.getObjects().forEach(standardizeObject);
+            }
+
+            return obj;
+        }
 
         // Load SVG
         function loadSVG(event) {
@@ -192,65 +261,20 @@
             if (file) {
                 const reader = new FileReader();
                 reader.onload = (e) => {
-                    const svgString = e.target.result;
-                    const parser = new DOMParser();
-                    const svgDoc = parser.parseFromString(svgString, 'image/svg+xml');
-                    const svgElement = svgDoc.documentElement;
+                    fabric.loadSVGFromString(e.target.result, function (objects, options) {
+                        canvas.clear();
 
-                    // Clear existing content
-                    while (svgOverlay.firstChild) {
-                        svgOverlay.removeChild(svgOverlay.firstChild);
-                    }
+                        objects.forEach(obj => {
+                            canvas.add(standardizeObject(obj));
+                        });
 
-                    // Copy all child nodes from the loaded SVG to our SVG overlay
-                    Array.from(svgElement.childNodes).forEach(node => {
-                        svgOverlay.appendChild(node.cloneNode(true));
+                        canvas.renderAll();
+                        refreshCanvas();
+                        // zoomToFit();
                     });
-
-                    // Set initial viewBox based on the canvas size
-                    svgOverlay.setAttribute('viewBox', `0 0 ${canvas.width} ${canvas.height}`);
-
-                    scaleSVGToCanvas();
-                    initializePaths();
                 };
                 reader.readAsText(file);
             }
-        }
-        // Scale SVG to match canvas size
-        function scaleSVGToCanvas() {
-            // Use the original canvas dimensions, not the scaled ones
-            const width = canvas.width;
-            const height = canvas.height;
-
-            // Set the SVG overlay size to match the original canvas size
-            svgOverlay.style.width = `${width}px`;
-            svgOverlay.style.height = `${height}px`;
-
-            // Update the viewBox to match the canvas dimensions
-            svgOverlay.setAttribute('viewBox', `0 0 ${width} ${height}`);
-            svgOverlay.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-
-            // Position the SVG overlay absolutely to match the canvas position
-            svgOverlay.style.position = 'absolute';
-            svgOverlay.style.top = '0';
-            svgOverlay.style.left = '0';
-
-            // // Apply the current scale to the SVG overlay
-            // svgOverlay.style.transform = `scale(${currentScale})`;
-            // svgOverlay.style.transformOrigin = '0 0';
-        }
-
-        // Initialize paths
-        function initializePaths() {
-            const paths = svgOverlay.querySelectorAll('path');
-            paths.forEach(path => {
-                path.style.pointerEvents = 'all';
-                path.addEventListener('click', (e) => {
-                    if (currentMode === 'select') {
-                        selectPath(path);
-                    }
-                });
-            });
         }
 
         // Set interaction mode
@@ -258,455 +282,466 @@
             currentMode = mode;
             document.querySelectorAll('.toolbar button').forEach(btn => btn.classList.remove('active'));
             document.getElementById(`mode-${mode}`).classList.add('active');
-            svgOverlay.style.pointerEvents = mode === 'pan' ? 'none' : 'all';
-            if (mode !== 'select') deselectPath();
+
+            canvas.isDrawingMode = false;
+            canvas.selection = mode === 'select';
+
+            canvas.forEachObject(function (object) {
+                object.selectable = mode === 'select';
+                object.evented = mode === 'select';
+            });
+
+            if (mode === 'pan') {
+                canvas.discardActiveObject();
+            }
+
+            canvas.renderAll();
+        }
+
+        function handleMouseDown(o) {
+            if (!currentMode.startsWith('draw-')) return;
+
+            isDrawing = true;
+            startPoint = canvas.getPointer(o.e);
+
+            switch (currentMode) {
+                case 'draw-line':
+                    tempShape = new fabric.Line([startPoint.x, startPoint.y, startPoint.x, startPoint.y], {
+                        stroke: 'black',
+                        strokeWidth: 2,
+                        selectable: false,
+                        evented: false
+                    });
+                    break;
+                case 'draw-circle':
+                    tempShape = new fabric.Circle({
+                        left: startPoint.x,
+                        top: startPoint.y,
+                        radius: 0,
+                        stroke: 'black',
+                        strokeWidth: 2,
+                        fill: 'transparent',
+                        selectable: false,
+                        evented: false
+                    });
+                    break;
+                case 'draw-rectangle':
+                    tempShape = new fabric.Rect({
+                        left: startPoint.x,
+                        top: startPoint.y,
+                        width: 0,
+                        height: 0,
+                        stroke: 'black',
+                        strokeWidth: 2,
+                        fill: 'transparent',
+                        selectable: false,
+                        evented: false
+                    });
+                    break;
+            }
+
+            canvas.add(tempShape);
+            canvas.renderAll();
+        }
+
+        function handleMouseMove(o) {
+            if (!isDrawing) return;
+
+            const pointer = canvas.getPointer(o.e);
+
+            switch (currentMode) {
+                case 'draw-line':
+                    tempShape.set({ x2: pointer.x, y2: pointer.y });
+                    break;
+                case 'draw-circle':
+                    const radius = Math.sqrt(Math.pow(pointer.x - startPoint.x, 2) + Math.pow(pointer.y - startPoint.y, 2)) / 2;
+                    tempShape.set({
+                        left: Math.min(startPoint.x, pointer.x),
+                        top: Math.min(startPoint.y, pointer.y),
+                        radius: radius
+                    });
+                    break;
+                case 'draw-rectangle':
+                    const width = Math.abs(pointer.x - startPoint.x);
+                    const height = Math.abs(pointer.y - startPoint.y);
+                    tempShape.set({
+                        left: Math.min(startPoint.x, pointer.x),
+                        top: Math.min(startPoint.y, pointer.y),
+                        width: width,
+                        height: height
+                    });
+                    break;
+            }
+
+            canvas.renderAll();
+        }
+
+
+
+        function addArcControlToLine(line) {
+            line.controls = fabric.Object.prototype.controls;
+            line.controls.arcControl = new fabric.Control({
+                x: 0,
+                y: -0.5,
+                offsetY: -20,
+                cursorStyle: 'pointer',
+                mouseUpHandler: arcControlMouseUp,
+                render: function (ctx, left, top, styleOverride, fabricObject) {
+                    ctx.save();
+                    ctx.translate(left, top);
+                    ctx.fillStyle = 'blue';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 6, 0, 2 * Math.PI, false);
+                    ctx.fill();
+                    ctx.restore();
+                },
+                actionHandler: arcControlAction
+            });
+
+            line.setCoords();
+            canvas.requestRenderAll();
+        }
+
+        function arcControlAction(eventData, transform, x, y) {
+            const line = transform.target;
+            const lineLength = Math.sqrt(Math.pow(line.path[1][1] - line.path[0][1], 2) + Math.pow(line.path[1][2] - line.path[0][2], 2));
+            const offset = y / lineLength;
+            updateLineArc(line, offset);
+            return true;
+        }
+
+        function arcControlMouseUp(eventData, transform) {
+            const line = transform.target;
+            canvas.setActiveObject(line);
+            canvas.requestRenderAll();
+        }
+
+        function updateLineArc(line, offset) {
+            const startPoint = line.path[0].slice(1);
+            const endPoint = line.path[1].slice(1);
+
+            const midPoint = {
+                x: (startPoint[0] + endPoint[0]) / 2,
+                y: (startPoint[1] + endPoint[1]) / 2
+            };
+            const length = Math.sqrt(Math.pow(endPoint[0] - startPoint[0], 2) + Math.pow(endPoint[1] - startPoint[1], 2));
+
+            offset = Math.max(Math.min(offset, 0.5), -0.5);
+
+            const controlPoint = {
+                x: midPoint.x,
+                y: midPoint.y - offset * length
+            };
+
+            const newPath = `M ${startPoint[0]} ${startPoint[1]} Q ${controlPoint.x} ${controlPoint.y} ${endPoint[0]} ${endPoint[1]}`;
+            line.set({ path: newPath });
+
+            line.setCoords();
+            canvas.requestRenderAll();
+        }
+
+        function handleMouseUp() {
+            if (!isDrawing) return;
+
+            isDrawing = false;
+
+            if (currentMode === 'draw-line') {
+                const startPoint = { x: tempShape.x1, y: tempShape.y1 };
+                const endPoint = { x: tempShape.x2, y: tempShape.y2 };
+                const midPoint = {
+                    x: (startPoint.x + endPoint.x) / 2,
+                    y: (startPoint.y + endPoint.y) / 2
+                };
+
+                const path = new fabric.Path(`M ${startPoint.x} ${startPoint.y} Q ${midPoint.x}, ${midPoint.y}, ${endPoint.x}, ${endPoint.y}`, {
+                    fill: '',
+                    stroke: 'black',
+                    objectCaching: false
+                });
+
+                canvas.remove(tempShape);
+                canvas.add(path);
+
+                addCurvePoints(path);
+
+                canvas.setActiveObject(path);
+            }
+
+            canvas.requestRenderAll();
+            tempShape = null;
+        }
+
+        function addCurvePoints(path) {
+            const points = path.path;
+
+            const p0 = makeCurveCircle(points[0][1], points[0][2], null, path, null);
+            p0.name = "p0";
+            canvas.add(p0);
+
+            const p1 = makeCurvePoint(points[1][1], points[1][2], null, path, null);
+            p1.name = "p1";
+            canvas.add(p1);
+
+            const p2 = makeCurveCircle(points[1][3], points[1][4], null, path, null);
+            p2.name = "p2";
+            canvas.add(p2);
+
+            path.customControlPoints = [p0, p1, p2];
+        }
+
+        function makeCurveCircle(left, top, line1, line2, line3) {
+            var c = new fabric.Circle({
+                left: left,
+                top: top,
+                strokeWidth: 5,
+                radius: 12,
+                fill: '#fff',
+                stroke: '#666'
+            });
+            c.hasBorders = c.hasControls = false;
+            c.line1 = line1;
+            c.line2 = line2;
+            c.line3 = line3;
+            return c;
+        }
+
+        function makeCurvePoint(left, top, line1, line2, line3) {
+            var c = new fabric.Circle({
+                left: left,
+                top: top,
+                strokeWidth: 8,
+                radius: 14,
+                fill: '#fff',
+                stroke: '#666'
+            });
+            c.hasBorders = c.hasControls = false;
+            c.line1 = line1;
+            c.line2 = line2;
+            c.line3 = line3;
+            return c;
+        }
+
+        function onObjectMoving(e) {
+            var p = e.target;
+            if (p.name == "p0" || p.name == "p2") {
+                var path = p.line2;
+                if (p.name == "p0") {
+                    path.path[0][1] = p.left;
+                    path.path[0][2] = p.top;
+                } else if (p.name == "p2") {
+                    path.path[1][3] = p.left;
+                    path.path[1][4] = p.top;
+                }
+            } else if (p.name == "p1") {
+                var path = p.line2;
+                path.path[1][1] = p.left;
+                path.path[1][2] = p.top;
+            }
+            canvas.requestRenderAll();
+        }
+
+        function refreshCanvas() {
+            canvas.forEachObject(function (obj) {
+                standardizeObject(obj);
+            });
+            canvas.renderAll();
         }
 
         // Zoom to fit
         function zoomToFit() {
-            // Add a small delay to ensure the canvas has been rendered
-            setTimeout(() => {
-                const wrapperWidth = interactWrapper.parentElement.offsetWidth;
-                const wrapperHeight = interactWrapper.parentElement.offsetHeight;
-                const canvasAspect = canvas.width / canvas.height;
-                const wrapperAspect = wrapperWidth / wrapperHeight;
-
-                let scale;
-                if (canvasAspect > wrapperAspect) {
-                    // Fit to width
-                    scale = wrapperWidth / canvas.width;
-                } else {
-                    // Fit to height
-                    scale = wrapperHeight / canvas.height;
-                }
-
-                // Apply a maximum zoom level to prevent extreme zooming
-                scale = Math.min(scale, 3);  // Limit zoom to 300%
-
-                // Ensure we're not zooming out too far
-                scale = Math.max(scale, 0.1);  // Minimum 10% zoom
-
-                setZoom(scale);
-
-                // Center the canvas
-                const scaledWidth = canvas.width * scale;
-                const scaledHeight = canvas.height * scale;
-                const leftOffset = (wrapperWidth - scaledWidth) / 2;
-                const topOffset = (wrapperHeight - scaledHeight) / 2;
-
-                interactWrapper.style.left = `${leftOffset}px`;
-                interactWrapper.style.top = `${topOffset}px`;
-            }, 100);  // 100ms delay
-        }
-
-        // Set zoom level
-        function setZoom(scale) {
-            currentScale = scale;
-            interactWrapper.style.transform = `scale(${scale})`;
-            document.getElementById('zoom-level').textContent = `${Math.round(scale * 100)}%`;
-            scaleSVGToCanvas();
-        }
-
-        function handleMouseDown(e) {
-            if (currentMode === 'pan') {
-                isDragging = true;
-                startX = e.clientX;
-                startY = e.clientY;
-            } else if (currentMode === 'draw') {
-                startDrawing(e);
-            }
-        }
-
-        function handleMouseMove(e) {
-            if (isDragging && currentMode === 'pan') {
-                const dx = e.clientX - startX;
-                const dy = e.clientY - startY;
-                const currentTransform = new DOMMatrix(window.getComputedStyle(interactWrapper).transform);
-                const newTransform = currentTransform.translate(dx / currentScale, dy / currentScale);
-                interactWrapper.style.transform = newTransform.toString();
-                startX = e.clientX;
-                startY = e.clientY;
-            } else if (currentMode === 'draw') {
-                draw(e);
-            }
-        }
-
-        function handleMouseUp() {
-            isDragging = false;
-            if (currentMode === 'draw') {
-                endDrawing();
-            }
-        }
-
-        // Handle wheel event for zooming
-        function handleWheel(e) {
-            e.preventDefault();
-            const delta = e.deltaY > 0 ? 0.9 : 1.1;
-            const newScale = currentScale * delta;
-            setZoom(newScale);
-        }
-        // Select a path
-        function selectPath(path) {
-            deselectPath();
-            selectedPath = path;
-            path.classList.add('selected');
-            createHandles(path);
-            showPropertyPanel(path);
-            makePathDraggable(path);
-        }
-
-        // Deselect the current path
-        function deselectPath() {
-            if (selectedPath) {
-                selectedPath.classList.remove('selected');
-                removeHandles();
-                hidePropertyPanel();
-                selectedPath = null;
-            }
-        }
-
-        // Make a path draggable
-        function makePathDraggable(path) {
-            interact(path).draggable({
-                listeners: {
-                    move(event) {
-                        const dx = event.dx / currentScale;
-                        const dy = event.dy / currentScale;
-                        updatePathPosition(path, dx, dy);
-                    }
-                }
+            canvas.setZoom(1);
+            canvas.setDimensions({
+                width: window.innerWidth,
+                height: window.innerHeight - 50
             });
+            canvas.calcOffset();
 
+            const objects = canvas.getObjects();
+            if (objects.length > 0) {
+                const group = new fabric.Group(objects, { active: false });
+                canvas.setViewportTransform([1, 0, 0, 1, 0, 0]); // Reset zoom and pan
+                const canvasWidth = canvas.getWidth();
+                const canvasHeight = canvas.getHeight();
+                const groupWidth = group.width;
+                const groupHeight = group.height;
+                const scaleX = canvasWidth / groupWidth;
+                const scaleY = canvasHeight / groupHeight;
+                const scale = Math.min(scaleX, scaleY) * 0.9; // 90% to leave some margin
 
-        }
-
-        function updatePathPosition(path, dx, dy) {
-            // Parse the current path to points
-            let points = parsePathToPoints(path.getAttribute('d'));
-
-            // Update all points
-            points = points.map(point => ({
-                x: point.x + dx,
-                y: point.y + dy
-            }));
-
-            // Convert points back to path string
-            const newD = pointsToPathD(points);
-
-            // Update the path
-            path.setAttribute('d', newD);
-
-            // Update handle positions
-            updateHandlePositions(path, dx, dy);
-        }
-
-        function updateHandlePositions(path, dx, dy) {
-            const handles = document.querySelectorAll(`.handle[data-path-id="${path.id}"]`);
-            handles.forEach(handle => {
-                const x = parseFloat(handle.getAttribute('cx')) + dx;
-                const y = parseFloat(handle.getAttribute('cy')) + dy;
-                handle.setAttribute('cx', x);
-                handle.setAttribute('cy', y);
-            });
-        }
-        // Create handles for the selected path
-        function createHandles(path) {
-            const points = parsePathToPoints(path.getAttribute('d'));
-            points.forEach((point, index) => {
-                createHandle(point.x, point.y, `point-${index}`, path);
-            });
-        }
-
-
-        // Check if a path is curved
-        function isPathCurved(path) {
-            const d = path.getAttribute('d');
-            return d.includes('C') || d.includes('c') || d.includes('S') || d.includes('s') ||
-                d.includes('Q') || d.includes('q') || d.includes('T') || d.includes('t');
-        }
-
-        // Create a handle
-        function createHandle(x, y, type, path) {
-            const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            handle.setAttribute('cx', x);
-            handle.setAttribute('cy', y);
-            handle.setAttribute('r', 5);
-            handle.classList.add('handle', type);
-            handle.dataset.pathId = path.id;
-            handle.dataset.index = type.split('-')[1];  // Store the point index
-            svgOverlay.appendChild(handle);
-            makeHandleDraggable(handle);
-        }
-
-        // Create a control handle
-        function createControlHandle(x, y, path) {
-            const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            handle.setAttribute('cx', x);
-            handle.setAttribute('cy', y);
-            handle.setAttribute('r', 5);
-            handle.classList.add('handle', 'control');
-            handle.dataset.pathId = path.id;
-            svgOverlay.appendChild(handle);
-            makeHandleDraggable(handle);
-
-            // Create the control line
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            line.setAttribute('x1', path.getPointAtLength(0).x);
-            line.setAttribute('y1', path.getPointAtLength(0).y);
-            line.setAttribute('x2', x);
-            line.setAttribute('y2', y);
-            line.setAttribute('stroke', 'gray');
-            line.setAttribute('stroke-dasharray', '4 4');
-            line.classList.add('control-line');
-            svgOverlay.insertBefore(line, handle);
-        }
-
-        // Remove all handles
-        function removeHandles() {
-            svgOverlay.querySelectorAll('.handle, .control-line').forEach(el => el.remove());
-        }
-        // Make a handle draggable
-        function makeHandleDraggable(handle) {
-            interact(handle).draggable({
-                listeners: {
-                    move(event) {
-                        const x = parseFloat(handle.getAttribute('cx')) + event.dx / currentScale;
-                        const y = parseFloat(handle.getAttribute('cy')) + event.dy / currentScale;
-                        handle.setAttribute('cx', x);
-                        handle.setAttribute('cy', y);
-                        updatePath(handle);
-                    }
-                }
-            });
-        }
-
-        // Function to update the path when a handle is moved
-        function updatePath(handle) {
-            const path = document.getElementById(handle.dataset.pathId);
-            if (!path) return;
-
-            const points = parsePathToPoints(path.getAttribute('d'));
-            const index = parseInt(handle.dataset.index);
-
-            points[index] = {
-                x: parseFloat(handle.getAttribute('cx')),
-                y: parseFloat(handle.getAttribute('cy'))
-            };
-
-            const newD = pointsToPathD(points);
-            path.setAttribute('d', newD);
-        }
-
-        function pointsToPathD(points) {
-            return 'M ' + points.map(p => `${p.x},${p.y}`).join(' L ');
-        }
-
-        function parsePathToPoints(d) {
-            const commands = d.match(/[MLHVCSQTAZmlhvcsqtaz][^MLHVCSQTAZmlhvcsqtaz]*/g) || [];
-            let points = [];
-            let currentX = 0, currentY = 0;
-
-            commands.forEach(command => {
-                const type = command[0];
-                const args = command.slice(1).trim().split(/[\s,]+/).map(parseFloat);
-
-                switch (type.toUpperCase()) {
-                    case 'M':
-                    case 'L':
-                        points.push({ x: args[0], y: args[1] });
-                        currentX = args[0];
-                        currentY = args[1];
-                        break;
-                    case 'H':
-                        points.push({ x: args[0], y: currentY });
-                        currentX = args[0];
-                        break;
-                    case 'V':
-                        points.push({ x: currentX, y: args[0] });
-                        currentY = args[0];
-                        break;
-                    // Add cases for other command types as needed
-                }
-            });
-
-            return points;
-        }
-
-        // Function to parse an SVG path string into an array of command objects
-        function parseSVGPath(d) {
-            const commands = [];
-            // Regular expression to match SVG path commands
-            const commandRegex = /([MLHVCSQTAZ])([^MLHVCSQTAZ]*)/gi;
-            let match;
-            let lastX = 0, lastY = 0;  // Keep track of the last known position
-
-            // Iterate through each command in the path string
-            while ((match = commandRegex.exec(d)) !== null) {
-                const [, type, argsString] = match;
-                // Parse the command arguments into numbers
-                const args = argsString.trim().split(/[ ,]+/).map(parseFloat);
-                // Create a command object, noting if it's a relative command
-                const command = { type: type.toUpperCase(), relative: type !== type.toUpperCase() };
-
-                // Parse the command based on its type
-                switch (type.toUpperCase()) {
-                    case 'M':  // Move to
-                    case 'L':  // Line to
-                        [command.x, command.y] = args;
-                        lastX = command.x;
-                        lastY = command.y;
-                        break;
-                    case 'H':  // Horizontal line to
-                        command.x = args[0];
-                        command.y = lastY;
-                        lastX = command.x;
-                        break;
-                    case 'V':  // Vertical line to
-                        command.x = lastX;
-                        command.y = args[0];
-                        lastY = command.y;
-                        break;
-                    // Additional cases for other command types will go here
-                }
-                commands.push(command);
-            }
-            return commands;
-        }
-
-        // Function to convert an array of command objects back into an SVG path string
-        function stringifySVGPath(commands) {
-            return commands.map(cmd => {
-                // Determine if the command should be uppercase (absolute) or lowercase (relative)
-                const type = cmd.relative ? cmd.type.toLowerCase() : cmd.type.toUpperCase();
-                switch (type.toUpperCase()) {
-                    case 'M':  // Move to
-                    case 'L':  // Line to
-                        return `${type}${cmd.x},${cmd.y}`;
-                    case 'H':  // Horizontal line to
-                        return `${type}${cmd.x}`;
-                    case 'V':  // Vertical line to
-                        return `${type}${cmd.y}`;
-                    // Additional cases for other command types will go here
-                }
-            }).join(' ');  // Join all commands with spaces
-        }
-
-        function fitCurve(points) {
-            if (points.length < 4) return pointsToPathD(points);
-
-            let d = `M${points[0].x},${points[0].y}`;
-
-            for (let i = 1; i < points.length - 2; i += 3) {
-                const p0 = points[i - 1];
-                const p1 = points[i];
-                const p2 = points[i + 1];
-                const p3 = points[i + 2];
-
-                d += ` C${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y}`;
+                canvas.setZoom(scale);
+                canvas.setViewportTransform([
+                    scale, 0, 0, scale,
+                    (canvasWidth - groupWidth * scale) / 2,
+                    (canvasHeight - groupHeight * scale) / 2
+                ]);
+                canvas.remove(group); // Remove the temporary group
+            } else if (canvas.backgroundImage) {
+                // Existing code for background image...
             }
 
-            return d;
+            updateZoomLevel();
         }
 
-        function applyCurveFitting(path) {
-            const points = parsePathToPoints(path.getAttribute('d'));
-            const fittedPath = fitCurve(points);
-            path.setAttribute('d', fittedPath);
+        // Update zoom level display
+        function updateZoomLevel() {
+            document.getElementById('zoom-level').textContent = `${Math.round(canvas.getZoom() * 100)}%`;
+        }
 
-            // Recreate handles for the new path
-            removeHandles();
-            createHandles(path);
+        // Resize canvas
+        function resizeCanvas() {
+            canvas.setDimensions({
+                width: window.innerWidth,
+                height: window.innerHeight - 50
+            });
+            canvas.calcOffset();
+            canvas.renderAll();
         }
 
         // Show property panel
-        function showPropertyPanel(path) {
-            propertyPanel.style.display = 'block';
-            document.getElementById('stroke-width').value = path.getAttribute('stroke-width') || 1;
-            document.getElementById('stroke-width').addEventListener('change', updateStrokeWidth);
-            document.getElementById('delete-path').addEventListener('click', deletePath);
+        function showPropertyPanel(options) {
+            const panel = document.getElementById('property-panel');
+            panel.style.display = 'block';
+            const obj = options.selected[0];
 
-            // Add Fit Curve button
-            const fitCurveButton = document.createElement('button');
-            fitCurveButton.id = 'fit-curve';
-            fitCurveButton.textContent = 'Fit Curve';
-            fitCurveButton.addEventListener('click', () => applyCurveFitting(selectedPath));
-            propertyPanel.appendChild(fitCurveButton);
-        }
+            // Clear existing controls
+            while (panel.firstChild) {
+                panel.removeChild(panel.firstChild);
+            }
 
-        function hidePropertyPanel() {
-            propertyPanel.style.display = 'none';
-            document.getElementById('stroke-width').removeEventListener('change', updateStrokeWidth);
-            document.getElementById('delete-path').removeEventListener('click', deletePath);
+            // Add title
+            const title = document.createElement('h3');
+            title.textContent = 'Object Properties';
+            panel.appendChild(title);
 
-            // Remove Fit Curve button
-            const fitCurveButton = document.getElementById('fit-curve');
-            if (fitCurveButton) {
-                fitCurveButton.removeEventListener('click', applyCurveFitting);
-                fitCurveButton.remove();
+            // Add stroke width control
+            const strokeWidthLabel = document.createElement('label');
+            strokeWidthLabel.textContent = 'Stroke Width: ';
+            const strokeWidthInput = document.createElement('input');
+            strokeWidthInput.type = 'number';
+            strokeWidthInput.min = '1';
+            strokeWidthInput.max = '10';
+            strokeWidthInput.step = '1';
+            strokeWidthInput.value = obj.strokeWidth || 1;
+            strokeWidthInput.addEventListener('change', updateStrokeWidth);
+            strokeWidthLabel.appendChild(strokeWidthInput);
+            panel.appendChild(strokeWidthLabel);
+
+            // Add delete button
+            const deleteButton = document.createElement('button');
+            deleteButton.textContent = 'Delete Object';
+            deleteButton.addEventListener('click', deleteSelectedObject);
+            panel.appendChild(deleteButton);
+
+            // Add edit points button for paths
+            if (obj.type === 'path') {
+                const editButton = document.createElement('button');
+                editButton.textContent = editMode ? 'Exit Edit Mode' : 'Edit Points';
+                editButton.addEventListener('click', () => {
+                    makePathEditable(obj);
+                    editButton.textContent = editMode ? 'Exit Edit Mode' : 'Edit Points';
+                });
+                panel.appendChild(editButton);
             }
         }
+
+        // Hide property panel
+        function hidePropertyPanel() {
+            document.getElementById('property-panel').style.display = 'none';
+        }
+
+        function updatePathPoints(path) {
+            if (!path.edit) {
+                path.controls = fabric.Object.prototype.controls;
+                return;
+            }
+
+            const points = path.path;
+            path.controls = {};
+            points.forEach((point, index) => {
+                if (point[0] === 'M' || point[0] === 'L') {
+                    path.controls[`p${index}`] = new fabric.Control({
+                        positionHandler: function (dim, finalMatrix, fabricObject) {
+                            return new fabric.Point(point[1], point[2])
+                                .transform(fabricObject.calcTransformMatrix());
+                        },
+                        actionHandler: function (eventData, transform, x, y) {
+                            const invertedMatrix = fabric.util.invertTransform(path.calcTransformMatrix());
+                            const newPoint = fabric.util.transformPoint(new fabric.Point(x, y), invertedMatrix);
+                            point[1] = newPoint.x;
+                            point[2] = newPoint.y;
+                            return true;
+                        },
+                        actionName: 'modifyPolygon',
+                        render: function (ctx, left, top, styleOverride, fabricObject) {
+                            const size = this.sizeX;
+                            ctx.fillStyle = editMode ? 'red' : 'blue';
+                            ctx.beginPath();
+                            ctx.arc(left, top, size, 0, 2 * Math.PI, false);
+                            ctx.fill();
+                        }
+                    });
+                }
+            });
+        }
+
+        let editMode = false;
+
+        function makePathEditable(path) {
+            return
+            if (path.type !== 'path') return;
+
+            editMode = !editMode;
+            path.edit = editMode;
+
+            if (editMode) {
+                // Enter edit mode
+                canvas.discardActiveObject();
+                canvas.selection = false;
+                canvas.forEachObject(function (obj) {
+                    obj.selectable = false;
+                    obj.evented = false;
+                });
+                path.selectable = true;
+                path.evented = true;
+                canvas.setActiveObject(path);
+            } else {
+                // Exit edit mode
+                canvas.selection = true;
+                canvas.forEachObject(function (obj) {
+                    obj.selectable = true;
+                    obj.evented = true;
+                });
+            }
+
+            updatePathPoints(path);
+            canvas.requestRenderAll();
+        }
+
+        // Add this to your init function:
+        canvas.on('mouse:dblclick', function (options) {
+            if (options.target && options.target.type === 'path') {
+                makePathEditable(options.target);
+            }
+        });
 
         // Update stroke width
         function updateStrokeWidth(e) {
-            if (selectedPath) {
-                selectedPath.setAttribute('stroke-width', e.target.value);
+            const obj = canvas.getActiveObject();
+            if (obj) {
+                obj.set('strokeWidth', parseInt(e.target.value));
+                canvas.renderAll();
             }
         }
 
-        // Delete selected path
-        function deletePath() {
-            if (selectedPath) {
-                selectedPath.remove();
-                deselectPath();
+        // Delete selected object
+        function deleteSelectedObject() {
+            const obj = canvas.getActiveObject();
+            if (obj) {
+                canvas.remove(obj);
+                hidePropertyPanel();
             }
         }
 
-        // Drawing new paths
-        let isDrawing = false;
-        let newPath = null;
-
-        function startDrawing(e) {
-            if (currentMode !== 'draw') return;
-
-            isDrawing = true;
-            const point = getMousePosition(e);
-            newPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            newPath.setAttribute('d', `M${point.x},${point.y}`);
-            newPath.setAttribute('fill', 'none');
-            newPath.setAttribute('stroke', 'black');
-            newPath.setAttribute('stroke-width', '2');
-            svgOverlay.appendChild(newPath);
-        }
-
-        function draw(e) {
-            if (!isDrawing) return;
-
-            const point = getMousePosition(e);
-            const d = newPath.getAttribute('d');
-            const newD = `${d} L${point.x},${point.y}`;
-            newPath.setAttribute('d', newD);
-        }
-
-        function endDrawing() {
-            if (!isDrawing) return;
-
-            isDrawing = false;
-            initializePaths();
-            newPath = null;
-        }
-
-        function getMousePosition(e) {
-            const CTM = svgOverlay.getScreenCTM();
-            return {
-                x: (e.clientX - CTM.e) / CTM.a,
-                y: (e.clientY - CTM.f) / CTM.d
-            };
-        }
-
-        // Add these event listeners to the init function
-        svgOverlay.addEventListener('mousedown', startDrawing);
-        svgOverlay.addEventListener('mousemove', draw);
-        svgOverlay.addEventListener('mouseup', endDrawing);
         // Initialize the application
         init();
     </script>
